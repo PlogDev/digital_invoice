@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtuelle Umgebung
+venv/
+ENV/
+
+# SQLite Datenbank
+*.db
+*.sqlite3
+
+# PDF-Dateien
+pdfs/input/*
+pdfs/processed/*
+!pdfs/input/.gitkeep
+!pdfs/processed/.gitkeep
+!pdfs/processed/berta/.gitkeep
+!pdfs/processed/kosten/.gitkeep
+!pdfs/processed/irrlaeufer/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
