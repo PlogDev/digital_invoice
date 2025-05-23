@@ -1,0 +1,149 @@
+Auflistung der Ordnerpfade f|r Volume Windows
+Volumeseriennummer : 5A0A-3B0A
+C:.
+|   README.md
+|   setup_projekt.py
+|   
++---backend
+|   |   .gitignore
+|   |   dokumente.db
+|   |   README.md
+|   |   requirements.txt
+|   |   
+|   +---app
+|   |   |   main.py
+|   |   |   __init__.py
+|   |   |   
+|   |   +---config
+|   |   |   |   settings.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           settings.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---database
+|   |   |   |   connection.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           connection.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---models
+|   |   |   |   dokument.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           dokument.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---routes
+|   |   |   |   dokumente.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           dokumente.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---schemas
+|   |   |   |   dokument.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           dokument.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---services
+|   |   |   |   ocr_service.py
+|   |   |   |   storage_service.py
+|   |   |   |   __init__.py
+|   |   |   |   
+|   |   |   +---__pycache__
+|   |   |           ocr_service.cpython-311.pyc
+|   |   |           storage_service.cpython-311.pyc
+|   |   |           __init__.cpython-311.pyc
+|   |   |           
+|   |   +---static
+|   |   |   +---images
+|   |   |           Logo-gross-neu.png
+|   |   |           
+|   |   +---utils
+|   |   |       helpers.py
+|   |   |       __init__.py
+|   |   |       
+|   |   +---__pycache__
+|   |           main.cpython-311.pyc
+|   |           __init__.cpython-311.pyc
+|   |           
+|   +---pdfs
+|   |   +---input
+|   |   |       .gitkeep
+|   |   |       
+|   |   +---processed
+|   |       +---berta
+|   |       |       .gitkeep
+|   |       |       Invoice_255125008543_20209803.DE0001_ORIGINAL.pdf
+|   |       |       LIEFERSCHEIN_257559146181.pdf
+|   |       |       
+|   |       +---irrlaeufer
+|   |       |       .gitkeep
+|   |       |       
+|   |       +---kosten
+|   |               .gitkeep
+|   |               
+|   +---tests
++---frontend
+    |   .gitignore
+    |   eslint.config.js
+    |   index.html
+    |   package-lock.json
+    |   package.json
+    |   postcss.config.js
+    |   README.md
+    |   tailwind.config.js
+    |   vite.config.ts
+    |   
+    +---node_modules
+    |           
+    +---public
+    |   |   vite.svg
+    |   |   
+    |   +---images
+    |   |       Logo-gross-neu.png
+    |   |       
+    |   +---pdf-worker
+    |           pdf.worker.min.mjs
+    |           
+    +---src
+        |   App.css
+        |   App.tsx
+        |   index.css
+        |   main.tsx
+        |   
+        +---assets
+        |       react.svg
+        |       
+        +---components
+        |   +---DocumentList
+        |   |       DocumentList.tsx
+        |   |       DocumentListItem.tsx
+        |   |       index.ts
+        |   |       
+        |   +---DocumentViewer
+        |   |       DocumentViewer.tsx
+        |   |       index.ts
+        |   |       
+        |   +---MetadataForm
+        |           index.ts
+        |           MetadataForm.tsx
+        |           
+        +---hooks
+        +---pages
+        +---services
+        |       api.ts
+        |       
+        +---types
+        |       index.ts
+        |       
+        +---utils
