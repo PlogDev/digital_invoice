@@ -13,7 +13,7 @@ Ein System zur OCR-basierten Erfassung und Kategorisierung von PDF-Dokumenten.
 
 1. Wechseln Sie ins Backend-Verzeichnis: `cd backend`
 2. Installieren Sie die Abhängigkeiten: `pip install -r requirements.txt`
-3. Starten Sie den Server: `python -m app.main`
+3. Starten Sie den Server: `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 
 ### Frontend
 
