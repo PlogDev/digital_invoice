@@ -4,7 +4,7 @@ import { dokumentService, metadatenService } from '../../services/api';
 import MetadataForm from '../MetadataForm/MetadataForm';
 import { Dokument, MetadatenFeld } from '../../types';
 
-// PDF.js Worker-Einrichtung mit lokalem Worker
+// PDF.js Worker-Einrichtung - korrigierter Pfad
 pdfjs.GlobalWorkerOptions.workerSrc = '/pdf-worker/pdf.worker.min.mjs';
 
 interface DocumentViewerProps {
@@ -22,7 +22,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
   const [scale, setScale] = useState<number>(1.0);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [ocrText, setOcrText] = useState<string>('');
   const [showOcr, setShowOcr] = useState<boolean>(false);
   const [metadatenFelder, setMetadatenFelder] = useState<MetadatenFeld[]>([]);
 
@@ -42,11 +41,6 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
   // Metadatenfelder beim Laden der Komponente abrufen
   useEffect(() => {
     loadMetadatenFelder();
-    
-    // OCR-Text laden, wenn ein Dokument vorhanden ist
-    if (document?.id) {
-      loadOcrText(document.id);
-    }
   }, [document]);
 
   // Metadatenfelder vom Backend abrufen
@@ -60,24 +54,17 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
     }
   };
 
-  // OCR-Text eines Dokuments abrufen
-  const loadOcrText = async (documentId: number): Promise<void> => {
-    try {
-      setLoading(true);
-      const response = await dokumentService.getDokumentText(documentId);
-      setOcrText(response.text || '');
-    } catch (error) {
-      console.error('Fehler beim Laden des OCR-Textes:', error);
-      setError('Der OCR-Text konnte nicht geladen werden.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // PDF-Dokument erfolgreich geladen
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }): void => {
     setNumPages(numPages);
     setPageNumber(1);
+    setError(null); // Fehler zurücksetzen bei erfolgreichem Laden
+  };
+
+  // PDF-Ladefehler behandeln
+  const onDocumentLoadError = (error: Error): void => {
+    console.error('PDF-Ladefehler:', error);
+    setError(`Die PDF-Datei konnte nicht geladen werden: ${error.message}`);
   };
 
   // Zur nächsten Seite blättern
@@ -156,6 +143,14 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
       {error && (
         <div className="bg-destructive/10 text-destructive p-3 m-4 rounded">
           {error}
+          <div className="mt-2 text-sm">
+            <p>Mögliche Lösungen:</p>
+            <ul className="list-disc list-inside mt-1">
+              <li>Backend-Server läuft auf Port 8000</li>
+              <li>PDF-Worker-Datei ist im public/pdf-worker/ Verzeichnis</li>
+              <li>Seite neu laden (F5)</li>
+            </ul>
+          </div>
         </div>
       )}
 
@@ -227,7 +222,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
                 className={`p-1 rounded ${
                   showOcr ? 'bg-primary/20 text-primary' : 'text-foreground hover:bg-accent'
                 }`}
-                title={showOcr ? 'PDF anzeigen' : 'OCR-Text anzeigen'}
+                title={showOcr ? 'PDF anzeigen' : 'OCR-Vorschau anzeigen'}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                   <path d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2h-1.528A6 6 0 004 9.528V4z" />
@@ -245,20 +240,35 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
               </div>
             ) : showOcr ? (
               <div className="p-4 w-full overflow-auto">
-                <pre className="whitespace-pre-wrap text-sm text-foreground">{ocrText || 'Kein OCR-Text verfügbar.'}</pre>
+                <div className="text-sm text-foreground">
+                  <h3 className="font-medium mb-2">OCR-Vorschau:</h3>
+                  <p className="text-muted-foreground italic mb-2">
+                    Die vollständige OCR-Texterkennung wird nach der Kategorisierung in die PDF eingebettet.
+                  </p>
+                  <pre className="whitespace-pre-wrap bg-muted p-3 rounded">
+                    {document.inhalt_vorschau || 'Keine Vorschau verfügbar.'}
+                  </pre>
+                </div>
               </div>
             ) : (
               <Document
                 file={documentPath}
                 onLoadSuccess={onDocumentLoadSuccess}
-                onLoadError={(error) => {
-                  console.error('PDF-Ladefehler:', error);
-                  setError("Die PDF-Datei konnte nicht geladen werden. " + 
-                           (error instanceof Error ? error.message : String(error)));
-                }}
+                onLoadError={onDocumentLoadError}
                 loading={
                   <div className="flex justify-center items-center h-full">
                     <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
+                  </div>
+                }
+                error={
+                  <div className="flex flex-col justify-center items-center h-full p-4 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-destructive mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                    </svg>
+                    <p className="text-destructive font-medium">PDF konnte nicht geladen werden</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Prüfe die Netzwerkverbindung und Backend-Erreichbarkeit
+                    </p>
                   </div>
                 }
               >
