@@ -1,5 +1,6 @@
 """
 Background-Service für periodische OCR-Verarbeitung neuer PDF-Dateien.
+Erweitert um Document Processing System für Wareneingang-Dokumente.
 """
 
 import asyncio
@@ -17,7 +18,7 @@ from ..services.ocr_service import OCRService
 logger = logging.getLogger(__name__)
 
 class OCRScheduler:
-    """Background-Service für periodische OCR-Verarbeitung."""
+    """Background-Service für periodische OCR-Verarbeitung mit Document Processing."""
     
     def __init__(self, check_interval: int = 30):
         """
@@ -28,6 +29,7 @@ class OCRScheduler:
         self.running = False
         self.processed_files: Set[str] = set()
         self._task = None
+        self._document_processor_manager = None
     
     async def start(self):
         """Startet den Background-Scheduler."""
@@ -37,6 +39,9 @@ class OCRScheduler:
         
         self.running = True
         logger.info(f"OCR-Scheduler gestartet - Prüfintervall: {self.check_interval}s")
+        
+        # Document Processing System initialisieren
+        await self._init_document_processing()
         
         # Initial bereits verarbeitete Dateien laden
         self._load_processed_files()
@@ -59,6 +64,24 @@ class OCRScheduler:
                 pass
         
         logger.info("OCR-Scheduler gestoppt")
+    
+    async def _init_document_processing(self):
+        """Initialisiert das Document Processing System."""
+        try:
+            # Lazy Import um Circular Imports zu vermeiden
+            from ..services.document_processing import document_processor_manager
+            
+            self._document_processor_manager = document_processor_manager
+            
+            processors = self._document_processor_manager.get_registered_processors()
+            logger.info(f"📋 Document Processors geladen: {', '.join(processors)}")
+            
+        except ImportError as e:
+            logger.warning(f"Document Processing System nicht verfügbar: {e}")
+            self._document_processor_manager = None
+        except Exception as e:
+            logger.error(f"Fehler beim Initialisieren des Document Processing: {e}")
+            self._document_processor_manager = None
     
     def _load_processed_files(self):
         """Lädt bereits verarbeitete Dateien beim Start."""
@@ -112,49 +135,74 @@ class OCRScheduler:
             
             # Neue Dateien verarbeiten
             for filename in new_files:
-                await self._process_single_file(filename)
+                await self._process_single_file_complete(filename)
         
         except Exception as e:
             logger.error(f"Fehler beim Prüfen der Dateien: {e}")
     
-    async def _process_single_file(self, filename: str):
-        """Verarbeitet eine einzelne PDF-Datei mit OCR."""
+    async def _process_single_file_complete(self, filename: str):
+        """
+        Vollständige Verarbeitung einer PDF-Datei:
+        1. OCR-Verarbeitung
+        2. Leerseiten-Entfernung
+        3. Document Processing (NEU)
+        4. Datenbankregistrierung
+        """
         try:
             file_path = os.path.join(PDF_INPUT_DIR, filename)
             
-            logger.info(f"Starte OCR-Verarbeitung: {filename}")
+            logger.info(f"🔄 Starte Vollverarbeitung: {filename}")
             
-            # OCR in separatem Thread ausführen (da CPU-intensiv)
+            # 1. OCR in separatem Thread ausführen (CPU-intensiv)
             success = await asyncio.to_thread(
                 self._run_ocr_sync, file_path
             )
             
-            if success:
-                # Leerseiten-Entfernung NACH OCR auf der finalen Datei
-                try:
-                    await asyncio.to_thread(
-                        self._remove_blank_pages_pillow, file_path
+            if not success:
+                logger.warning(f"❌ OCR fehlgeschlagen: {filename}")
+                return
+            
+            # 2. Leerseiten-Entfernung (optional, nicht kritisch)
+            try:
+                await asyncio.to_thread(
+                    self._remove_blank_pages_pillow, file_path
+                )
+            except Exception as e:
+                logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen für {filename}: {e}")
+            
+            # 3. NEU: Document Processing
+            try:
+                if self._document_processor_manager:
+                    doc_processed = await self._document_processor_manager.process_document(
+                        file_path, filename
                     )
-                except Exception as e:
-                    logger.warning(f"Leerseiten-Entfernung fehlgeschlagen für {filename}: {e}")
-                
-                # Marker-Datei erstellen
-                ocr_marker = file_path + '.ocr_processed'
-                with open(ocr_marker, 'w') as marker:
-                    marker.write(f"OCR processed by scheduler: {os.path.getmtime(file_path)}")
-                
-                # Als verarbeitet markieren
-                self.processed_files.add(filename)
-                
-                # In Datenbank hinzufügen falls noch nicht vorhanden
-                await self._add_to_database(filename, file_path)
-                
-                logger.info(f"OCR erfolgreich abgeschlossen: {filename}")
-            else:
-                logger.warning(f"OCR fehlgeschlagen: {filename}")
-        
+                    
+                    if doc_processed:
+                        logger.info(f"📄 Document Processing erfolgreich für: {filename}")
+                    else:
+                        logger.debug(f"Kein Document Processor für: {filename}")
+                else:
+                    logger.debug("Document Processing System nicht verfügbar")
+                    
+            except Exception as e:
+                logger.error(f"Document Processing fehlgeschlagen für {filename}: {e}")
+                # Nicht kritisch - OCR war erfolgreich, Processing ist optional
+            
+            # 4. Verarbeitungsmarker erstellen
+            ocr_marker = file_path + '.ocr_processed'
+            with open(ocr_marker, 'w') as marker:
+                marker.write(f"OCR + Processing: {os.path.getmtime(file_path)}")
+            
+            # 5. Als verarbeitet markieren
+            self.processed_files.add(filename)
+            
+            # 6. In Datenbank hinzufügen falls noch nicht vorhanden
+            await self._add_to_database(filename, file_path)
+            
+            logger.info(f"✅ Vollverarbeitung abgeschlossen: {filename}")
+            
         except Exception as e:
-            logger.error(f"Fehler bei OCR-Verarbeitung von {filename}: {e}")
+            logger.error(f"Fehler bei Vollverarbeitung von {filename}: {e}")
     
     def _run_ocr_sync(self, file_path: str) -> bool:
         """Synchrone OCR-Ausführung für asyncio.to_thread."""
@@ -187,12 +235,6 @@ class OCRScheduler:
         """
         Entfernt leere Seiten mit Pillow (pixelbasierte Analyse).
         Zuverlässiger als textbasierte Ansätze.
-        
-        Args:
-            pdf_path: Pfad zur PDF-Datei
-            
-        Returns:
-            bool: True wenn Seiten entfernt wurden
         """
         try:
             import io
@@ -207,15 +249,9 @@ class OCRScheduler:
             
             logger.info(f"Prüfe {original_page_count} Seiten auf Leerheit: {os.path.basename(pdf_path)}")
             
-            doc = fitz.open(pdf_path)
             doc_closed = False
             
             try:
-                pages_to_remove = []
-                original_page_count = len(doc)
-                
-                logger.info(f"Prüfe {original_page_count} Seiten auf Leerheit: {os.path.basename(pdf_path)}")
-                
                 for page_num in range(len(doc)):
                     page = doc[page_num]
                     
@@ -223,7 +259,7 @@ class OCRScheduler:
                     pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))  # 50% Größe
                     img_data = pix.tobytes("png")
                     
-                    # Pillow-Image direkt aus Speicher erstellen (Windows-kompatibel)
+                    # Pillow-Image direkt aus Speicher erstellen
                     img = Image.open(io.BytesIO(img_data))
                     
                     # Zu Graustufen konvertieren für einfachere Analyse
@@ -243,8 +279,6 @@ class OCRScheduler:
                     if is_blank:
                         pages_to_remove.append(page_num)
                         logger.debug(f"Seite {page_num + 1} ist leer (weiß: {white_ratio:.1%})")
-                    else:
-                        logger.debug(f"Seite {page_num + 1} hat Inhalt (weiß: {white_ratio:.1%})")
                     
                     # Explizit Speicher freigeben
                     img.close()
@@ -269,17 +303,16 @@ class OCRScheduler:
                         # Original durch bereinigte Version ersetzen
                         shutil.move(temp_output_path, pdf_path)
                         
-                        logger.info(f"🗑️  Leerseiten entfernt: {removed_count} von {original_page_count} Seiten aus {os.path.basename(pdf_path)}")
+                        logger.info(f"🗑️  Leerseiten entfernt: {removed_count} von {original_page_count} aus {os.path.basename(pdf_path)}")
                         return True
                         
                     except Exception as save_error:
                         logger.error(f"Fehler beim Speichern der bereinigten PDF: {save_error}")
-                        # Temporäre Datei aufräumen
                         if os.path.exists(temp_output_path):
                             os.remove(temp_output_path)
                         return False
                 else:
-                    logger.info(f"✅ Keine leeren Seiten gefunden in {os.path.basename(pdf_path)}")
+                    logger.info(f"✅ Keine leeren Seiten in {os.path.basename(pdf_path)}")
                     return False
                     
             finally:
@@ -313,7 +346,7 @@ class OCRScheduler:
                     inhalt_vorschau=preview_text
                 )
                 
-                logger.info(f"Datei zur Datenbank hinzugefügt: {filename}")
+                logger.info(f"📋 Datei zur Datenbank hinzugefügt: {filename}")
         
         except Exception as e:
             logger.error(f"Fehler beim Hinzufügen zur DB: {e}")
@@ -323,7 +356,7 @@ class OCRScheduler:
         if self.running:
             # Erstelle Task für sofortige Prüfung
             asyncio.create_task(self._check_and_process_files())
-            logger.info("Manuelle OCR-Prüfung ausgelöst")
+            logger.info("Manuelle OCR-Prüfung mit Document Processing ausgelöst")
 
 
 # Globale Scheduler-Instanz

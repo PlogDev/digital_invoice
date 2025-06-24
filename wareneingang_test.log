@@ -1,0 +1,30 @@
+2025-06-24 15:52:11,508 - INFO - 🚀 Wareneingang PDF-Test gestartet
+2025-06-24 15:52:11,508 - INFO - ================================================================================
+2025-06-24 15:52:11,509 - INFO - 🎯 Teste erste gefundene PDF: backend\pdfs\input\image-1.pdf
+2025-06-24 15:52:11,509 - INFO - 🔍 Starte Test für PDF: backend\pdfs\input\image-1.pdf
+2025-06-24 15:52:11,509 - INFO - ================================================================================
+2025-06-24 15:52:11,601 - INFO - 📖 Öffne PDF mit PyMuPDF: image-1.pdf
+2025-06-24 15:52:11,603 - INFO - 📄 PDF hat 4 Seite(n)
+2025-06-24 15:52:11,608 - INFO - 📝 2 Textzeilen extrahiert (davon ersten 30 verwendet)
+2025-06-24 15:52:11,608 - INFO - 📋 ERSTE 50 ZEICHEN DER PDF:
+2025-06-24 15:52:11,608 - INFO -    'Wareneingang 2501231'
+2025-06-24 15:52:11,609 - INFO -    (Gesamtlänge: 20 Zeichen)
+2025-06-24 15:52:11,609 - INFO - ------------------------------------------------------------
+2025-06-24 15:52:11,609 - INFO - 📄 ALLE EXTRAHIERTEN ZEILEN:
+2025-06-24 15:52:11,609 - INFO -     1: 'Wareneingang'
+2025-06-24 15:52:11,609 - INFO -     2: '2501231'
+2025-06-24 15:52:11,609 - INFO - ------------------------------------------------------------
+2025-06-24 15:52:11,609 - INFO - 🔍 WARENEINGANG-ERKENNUNG:
+2025-06-24 15:52:11,609 - INFO - ✅ 'Wareneingang' gefunden in Zeile 1:
+2025-06-24 15:52:11,609 - INFO -    'Wareneingang'
+2025-06-24 15:52:11,609 - INFO - 📦 Nächste Zeile (potenzielle Lieferscheinnummer):
+2025-06-24 15:52:11,609 - INFO -    Zeile 2: '2501231'
+2025-06-24 15:52:11,609 - INFO - ✅ Bereinigte Lieferscheinnummer: '2501231'
+2025-06-24 15:52:11,610 - INFO - ------------------------------------------------------------
+2025-06-24 15:52:11,610 - INFO - 📊 ZUSAMMENFASSUNG:
+2025-06-24 15:52:11,610 - INFO -    📄 Datei: image-1.pdf
+2025-06-24 15:52:11,610 - INFO -    🔍 Wareneingang erkannt: ✅ JA
+2025-06-24 15:52:11,610 - INFO -    📦 Lieferscheinnummer: '2501231'
+2025-06-24 15:52:11,610 - INFO - ================================================================================
+2025-06-24 15:52:11,610 - INFO - 🎉 Test erfolgreich - Wareneingang erkannt!
+2025-06-24 15:52:11,610 - INFO - 📝 Detaillierte Logs gespeichert in: wareneingang_test.log
