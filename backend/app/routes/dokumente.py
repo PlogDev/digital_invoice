@@ -1,7 +1,8 @@
 """
-API-Routen für die Dokumentenverwaltung.
+API-Routen für die Dokumentenverwaltung mit OCR-Integration beim Scannen.
 """
 
+import logging
 import os
 import shutil
 from pathlib import Path as PathLib
@@ -25,23 +26,27 @@ from ..schemas.dokument import (
 from ..services.ocr_service import OCRService
 from ..services.storage_service import StorageService
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/dokumente", tags=["Dokumente"])
 
 
 @router.get("/", response_model=DokumentList)
 async def get_dokumente():
-    """Ruft alle Dokumente ab und scannt nach neuen Dateien im Eingangsverzeichnis."""
+    """
+    Ruft alle Dokumente ab und scannt nach neuen Dateien im Eingangsverzeichnis.
+    OCR wird automatisch beim Scannen neuer Dateien durchgeführt.
+    """
     
-    # Neue PDF-Dateien prüfen und hinzufügen
-    neue_dateien = StorageService.get_input_files()
+    # Neue PDF-Dateien prüfen und mit OCR verarbeiten
+    neue_dateien = StorageService.get_input_files()  # OCR wird hier automatisch durchgeführt
+    
     for datei in neue_dateien:
         # Prüfen, ob Datei bereits in DB
         vorhandene = [d for d in Dokument.get_all() if d.dateiname == datei["dateiname"]]
         
         if not vorhandene:
-            # OCR durchführen
-            text = OCRService.extract_text_from_pdf(datei["pfad"])
-            vorschau = OCRService.get_preview(text)
+            # Bessere Vorschau aus OCR-verarbeiteter PDF erstellen
+            vorschau = OCRService.extract_preview_text(datei["pfad"], max_chars=300)
             
             # In DB speichern
             Dokument.create(
@@ -70,9 +75,34 @@ async def get_dokument(dokument_id: int = Path(..., description="Die ID des Doku
     return dokument.to_dict()
 
 
+@router.get("/file/{dokument_id}")
+async def get_dokument_file(dokument_id: int):
+    """Liefert die PDF-Datei eines Dokuments (bereits OCR-verarbeitet)."""
+    dokument = Dokument.get_by_id(dokument_id)
+    
+    if not dokument:
+        raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+    
+    file_path = dokument.pfad
+    
+    if not os.path.isfile(file_path):
+        raise HTTPException(
+            status_code=404, 
+            detail=f"PDF-Datei nicht gefunden: {file_path}"
+        )
+    
+    return FileResponse(
+        path=file_path, 
+        filename=dokument.dateiname,
+        media_type="application/pdf"
+    )
+
+
 @router.post("/upload", response_model=DokumentResponse)
 async def upload_dokument(file: UploadFile = File(...)):
-    """Lädt ein neues PDF-Dokument hoch."""
+    """
+    Lädt ein neues PDF-Dokument hoch und führt sofort OCR durch.
+    """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt")
     
@@ -80,14 +110,27 @@ async def upload_dokument(file: UploadFile = File(...)):
     file_path = os.path.join(PDF_INPUT_DIR, file.filename)
     
     try:
+        # Datei ins Input-Verzeichnis speichern
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
+        
+        # Sofort OCR durchführen
+        success = StorageService._process_pdf_with_ocr_inplace(file_path)
+        
+        if not success:
+            # Fallback: Datei bleibt, aber ohne OCR
+            logger.warning(f"OCR fehlgeschlagen für hochgeladene Datei: {file.filename}")
+        
+        # OCR-Marker erstellen
+        ocr_marker_path = file_path + '.ocr_processed'
+        with open(ocr_marker_path, 'w') as marker:
+            marker.write(f"OCR processed at upload: {os.path.getmtime(file_path)}")
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Datei: {str(e)}")
     
-    # OCR durchführen
-    text = OCRService.extract_text_from_pdf(file_path)
-    vorschau = OCRService.get_preview(text)
+    # Vorschau-Text aus OCR-verarbeiteter PDF erstellen
+    vorschau = OCRService.extract_preview_text(file_path, max_chars=300)
     
     # In DB speichern
     dokument = Dokument.create(
@@ -104,7 +147,9 @@ async def kategorisiere_dokument(
     update_data: DokumentUpdate,
     dokument_id: int = Path(..., description="Die ID des Dokuments")
 ):
-    """Kategorisiert ein Dokument und aktualisiert seine Metadaten."""
+    """
+    Kategorisiert ein Dokument und verschiebt es (ohne weitere OCR-Verarbeitung).
+    """
     dokument = Dokument.get_by_id(dokument_id)
     
     if not dokument:
@@ -113,15 +158,23 @@ async def kategorisiere_dokument(
     if update_data.kategorie and update_data.kategorie not in PDF_CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {update_data.kategorie}")
     
-    # Wenn Kategorie geändert wird, Datei verschieben
+    # Wenn Kategorie geändert wird, PDF verschieben (OCR bereits durchgeführt)
     if update_data.kategorie and update_data.kategorie != dokument.kategorie:
-        success, neuer_pfad = StorageService.move_file(dokument.pfad, update_data.kategorie)
+        success, neuer_pfad = StorageService.move_file_only(
+            dokument.pfad, 
+            update_data.kategorie
+        )
         
         if not success:
             raise HTTPException(status_code=500, detail="Fehler beim Verschieben der Datei")
         
         dokument.kategorie = update_data.kategorie
         dokument.pfad = neuer_pfad
+        
+        # Vorschau aus der bereits OCR-verarbeiteten PDF kann aktualisiert werden
+        aktualisierte_vorschau = OCRService.extract_preview_text(neuer_pfad, max_chars=300)
+        if aktualisierte_vorschau:
+            dokument.inhalt_vorschau = aktualisierte_vorschau
     
     # Metadaten aktualisieren, falls vorhanden
     if update_data.metadaten:
@@ -135,14 +188,14 @@ async def kategorisiere_dokument(
 
 @router.delete("/{dokument_id}", response_model=SuccessResponse)
 async def delete_dokument(dokument_id: int = Path(..., description="Die ID des Dokuments")):
-    """Löscht ein Dokument aus der Datenbank und optional die Datei."""
+    """Löscht ein Dokument aus der Datenbank und die Datei."""
     dokument = Dokument.get_by_id(dokument_id)
     
     if not dokument:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
     
-    # Datei löschen (optional, kann auch auskommentiert werden)
-    # StorageService.delete_file(dokument.pfad)
+    # Datei und OCR-Marker löschen
+    StorageService.delete_file(dokument.pfad)
     
     # Aus DB löschen
     success = dokument.delete()
@@ -157,21 +210,7 @@ async def delete_dokument(dokument_id: int = Path(..., description="Die ID des D
     }
 
 
-@router.get("/ocr/{dokument_id}", response_model=Dict[str, str])
-async def get_dokument_text(dokument_id: int = Path(..., description="Die ID des Dokuments")):
-    """Führt OCR auf einem Dokument aus und gibt den erkannten Text zurück."""
-    dokument = Dokument.get_by_id(dokument_id)
-    
-    if not dokument:
-        raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
-    
-    # OCR durchführen (auf alle Seiten)
-    text = OCRService.extract_text_from_pdf(dokument.pfad, max_pages=0)  # 0 = alle Seiten
-    
-    return {"text": text}
-
-
-# Metadatenfelder-Routen
+# Metadatenfelder-Routen (unverändert)
 @router.get("/metadaten/felder", response_model=MetadatenFeldList)
 async def get_metadatenfelder():
     """Ruft alle verfügbaren Metadatenfelder ab."""
@@ -208,25 +247,3 @@ async def delete_metadatenfeld(feld_id: int = Path(..., description="Die ID des 
         "message": "Metadatenfeld wurde gelöscht",
         "data": {"id": feld_id}
     }
-
-@router.get("/file/{dokument_id}")
-async def get_dokument_file(dokument_id: int):
-    """Liefert die PDF-Datei eines Dokuments."""
-    dokument = Dokument.get_by_id(dokument_id)
-    
-    if not dokument:
-        raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
-    
-    file_path = dokument.pfad
-    
-    if not os.path.isfile(file_path):
-        raise HTTPException(
-            status_code=404, 
-            detail=f"PDF-Datei nicht gefunden: {file_path}"
-        )
-    
-    return FileResponse(
-        path=file_path, 
-        filename=dokument.dateiname,
-        media_type="application/pdf"
-    )

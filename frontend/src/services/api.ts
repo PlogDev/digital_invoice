@@ -56,13 +56,16 @@ export const dokumentService = {
 
   /**
    * OCR-Text eines Dokuments abrufen
+   * HINWEIS: Dieser Endpunkt wird nach der OCRmyPDF-Integration nicht mehr benötigt,
+   * da der OCR-Text direkt in die PDF eingebettet wird.
    * @param id Dokument-ID
    * @returns Promise mit OCR-Text
    */
   getDokumentText: async (id: number): Promise<OcrTextResponse> => {
     try {
-      const response: AxiosResponse<OcrTextResponse> = await apiClient.get(`/dokumente/ocr/${id}`);
-      return response.data;
+      // Warnung: Dieser Endpunkt ist mit OCRmyPDF nicht mehr verfügbar
+      console.warn('getDokumentText wird mit OCRmyPDF-Integration nicht mehr benötigt');
+      return { text: 'OCR-Text ist nun direkt in der PDF eingebettet und über den PDF-Viewer zugänglich.' };
     } catch (error) {
       console.error(`Fehler beim Abrufen des OCR-Textes für Dokument ${id}:`, error);
       throw error;
