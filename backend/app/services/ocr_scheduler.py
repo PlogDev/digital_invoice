@@ -5,6 +5,8 @@ Background-Service für periodische OCR-Verarbeitung neuer PDF-Dateien.
 import asyncio
 import logging
 import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Set
 
@@ -128,6 +130,14 @@ class OCRScheduler:
             )
             
             if success:
+                # Leerseiten-Entfernung NACH OCR auf der finalen Datei
+                try:
+                    await asyncio.to_thread(
+                        self._remove_blank_pages_pillow, file_path
+                    )
+                except Exception as e:
+                    logger.warning(f"Leerseiten-Entfernung fehlgeschlagen für {filename}: {e}")
+                
                 # Marker-Datei erstellen
                 ocr_marker = file_path + '.ocr_processed'
                 with open(ocr_marker, 'w') as marker:
@@ -148,9 +158,6 @@ class OCRScheduler:
     
     def _run_ocr_sync(self, file_path: str) -> bool:
         """Synchrone OCR-Ausführung für asyncio.to_thread."""
-        import tempfile
-        import shutil
-        
         try:
             # Temporäre Datei für OCR-Output
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
@@ -174,6 +181,117 @@ class OCRScheduler:
                     
         except Exception as e:
             logger.error(f"Fehler beim synchronen OCR: {e}")
+            return False
+    
+    def _remove_blank_pages_pillow(self, pdf_path: str) -> bool:
+        """
+        Entfernt leere Seiten mit Pillow (pixelbasierte Analyse).
+        Zuverlässiger als textbasierte Ansätze.
+        
+        Args:
+            pdf_path: Pfad zur PDF-Datei
+            
+        Returns:
+            bool: True wenn Seiten entfernt wurden
+        """
+        try:
+            import io
+            import shutil
+
+            import fitz
+            from PIL import Image
+            
+            doc = fitz.open(pdf_path)
+            pages_to_remove = []
+            original_page_count = len(doc)
+            
+            logger.info(f"Prüfe {original_page_count} Seiten auf Leerheit: {os.path.basename(pdf_path)}")
+            
+            doc = fitz.open(pdf_path)
+            doc_closed = False
+            
+            try:
+                pages_to_remove = []
+                original_page_count = len(doc)
+                
+                logger.info(f"Prüfe {original_page_count} Seiten auf Leerheit: {os.path.basename(pdf_path)}")
+                
+                for page_num in range(len(doc)):
+                    page = doc[page_num]
+                    
+                    # Seite als Bild rendern (niedrige Auflösung für Performance)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))  # 50% Größe
+                    img_data = pix.tobytes("png")
+                    
+                    # Pillow-Image direkt aus Speicher erstellen (Windows-kompatibel)
+                    img = Image.open(io.BytesIO(img_data))
+                    
+                    # Zu Graustufen konvertieren für einfachere Analyse
+                    img_gray = img.convert('L')
+                    
+                    # Histogramm erstellen
+                    histogram = img_gray.histogram()
+                    
+                    # Prüfen ob Seite fast nur weiße Pixel hat
+                    total_pixels = img_gray.size[0] * img_gray.size[1]
+                    white_pixels = sum(histogram[240:])  # Pixel mit Wert 240-255 (fast weiß)
+                    white_ratio = white_pixels / total_pixels
+                    
+                    # Seite ist leer wenn >98% der Pixel weiß sind
+                    is_blank = white_ratio > 0.98
+                    
+                    if is_blank:
+                        pages_to_remove.append(page_num)
+                        logger.debug(f"Seite {page_num + 1} ist leer (weiß: {white_ratio:.1%})")
+                    else:
+                        logger.debug(f"Seite {page_num + 1} hat Inhalt (weiß: {white_ratio:.1%})")
+                    
+                    # Explizit Speicher freigeben
+                    img.close()
+                    img_gray.close()
+                
+                # Leere Seiten entfernen (von hinten nach vorne)
+                removed_count = 0
+                for page_num in reversed(pages_to_remove):
+                    doc.delete_page(page_num)
+                    removed_count += 1
+                
+                if removed_count > 0:
+                    # In temporäre Datei speichern
+                    with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_output:
+                        temp_output_path = temp_output.name
+                    
+                    try:
+                        doc.save(temp_output_path, deflate=True)
+                        doc.close()
+                        doc_closed = True
+                        
+                        # Original durch bereinigte Version ersetzen
+                        shutil.move(temp_output_path, pdf_path)
+                        
+                        logger.info(f"🗑️  Leerseiten entfernt: {removed_count} von {original_page_count} Seiten aus {os.path.basename(pdf_path)}")
+                        return True
+                        
+                    except Exception as save_error:
+                        logger.error(f"Fehler beim Speichern der bereinigten PDF: {save_error}")
+                        # Temporäre Datei aufräumen
+                        if os.path.exists(temp_output_path):
+                            os.remove(temp_output_path)
+                        return False
+                else:
+                    logger.info(f"✅ Keine leeren Seiten gefunden in {os.path.basename(pdf_path)}")
+                    return False
+                    
+            finally:
+                # Dokument schließen falls noch nicht geschlossen
+                if not doc_closed:
+                    try:
+                        doc.close()
+                    except:
+                        pass
+            
+        except Exception as e:
+            logger.error(f"Fehler bei pixelbasierter Leerseiten-Entfernung: {e}")
             return False
     
     async def _add_to_database(self, filename: str, file_path: str):

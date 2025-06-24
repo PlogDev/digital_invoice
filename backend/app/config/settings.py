@@ -14,6 +14,8 @@ PDF_DIR = BASE_DIR / "pdfs"
 # PDF-Verzeichnisse
 PDF_INPUT_DIR = PDF_DIR / "input"
 PDF_PROCESSED_DIR = PDF_DIR / "processed"
+CSV_LIST_DIR = PDF_DIR / "csv_lists"
+
 
 # Kategorien und deren Verzeichnisse
 PDF_CATEGORIES = {

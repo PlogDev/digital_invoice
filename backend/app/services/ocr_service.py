@@ -1,6 +1,6 @@
 """
 OCR-Service für die Erstellung durchsuchbarer PDF-Dokumente.
-Windows-optimierte Version ohne zusätzliche Tools.
+Saubere Version ohne problematische Parameter.
 """
 
 import logging
@@ -22,7 +22,6 @@ class OCRService:
     def create_searchable_pdf(input_pdf_path: str, output_pdf_path: str) -> bool:
         """
         Erstellt eine durchsuchbare PDF-Datei mit eingebetteter OCR-Textebene.
-        Windows-optimierte Version ohne zusätzliche Tools.
         
         Args:
             input_pdf_path: Pfad zur Eingabe-PDF
@@ -43,7 +42,7 @@ class OCRService:
             output_dir = Path(output_pdf_path).parent
             os.makedirs(output_dir, exist_ok=True)
             
-            # OCRmyPDF Konfiguration - Windows-optimiert
+            # Saubere OCRmyPDF Konfiguration - nur bewährte Parameter
             ocrmypdf.ocr(
                 input_pdf_path,
                 output_pdf_path,
@@ -53,12 +52,11 @@ class OCRService:
                 force_ocr=False,        # Nur OCR wenn noch nicht vorhanden
                 skip_text=False,        # Bestehenden Text nicht überspringen
                 clean=False,            # Deaktiviert - benötigt 'unpaper'
-                optimize=0,             # Keine Optimierung - vermeidet zusätzliche Abhängigkeiten
+                optimize=0,             # Keine Optimierung
                 color_conversion_strategy='LeaveColorUnchanged',  # Keine Farbkonvertierung
                 progress_bar=False,     # Kein Progress Bar im Log
                 use_threads=True,       # Multi-Threading aktivieren
-                rotate_pages=False,     # Deaktiviert - vermeidet zusätzliche Tools
-                # Weitere Windows-kompatible Optionen
+                rotate_pages=False,     # Deaktiviert
                 tesseract_timeout=300,  # 5 Minuten Timeout
                 tesseract_pagesegmode=1,  # Automatische Seitensegmentierung
             )
@@ -85,7 +83,7 @@ class OCRService:
             logger.error(f"Fehlende Abhängigkeit bei OCR: {str(e)}")
             logger.info("Versuche OCR mit minimaler Konfiguration...")
             
-            # Fallback: Minimale OCR-Konfiguration
+            # Minimaler Fallback
             try:
                 ocrmypdf.ocr(
                     input_pdf_path,
@@ -114,6 +112,69 @@ class OCRService:
             except Exception as copy_error:
                 logger.error(f"Auch Kopieren fehlgeschlagen: {str(copy_error)}")
                 return False
+    
+    @staticmethod
+    def remove_blank_pages_advanced(pdf_path: str) -> bool:
+        """
+        Entfernt leere Seiten mit eigener Implementierung (PyMuPDF hat keine is_blank() Methode!).
+        
+        Args:
+            pdf_path: Pfad zur PDF-Datei
+            
+        Returns:
+            bool: True wenn Seiten entfernt wurden, False sonst
+        """
+        try:
+            import fitz
+            
+            doc = fitz.open(pdf_path)
+            pages_to_remove = []
+            
+            # Jede Seite prüfen
+            for page_num in range(len(doc)):
+                page = doc[page_num]
+                
+                # Text prüfen
+                text = page.get_text().strip()
+                has_meaningful_text = len(text) > 5 and not text.isspace()
+                
+                # Bilder prüfen
+                images = page.get_images()
+                has_images = len(images) > 0
+                
+                # Zeichnungen prüfen
+                has_drawings = False
+                try:
+                    drawings = page.get_drawings()
+                    has_drawings = len(drawings) > 0
+                except:
+                    pass
+                
+                # Seite ist leer wenn sie keinen relevanten Inhalt hat
+                is_blank = not (has_meaningful_text or has_images or has_drawings)
+                
+                if is_blank:
+                    pages_to_remove.append(page_num)
+            
+            # Seiten von hinten nach vorne löschen (Index bleibt stabil)
+            removed_count = 0
+            for page_num in reversed(pages_to_remove):
+                doc.delete_page(page_num)
+                removed_count += 1
+            
+            if removed_count > 0:
+                # Dokument speichern
+                doc.save(pdf_path, incremental=False, deflate=True)
+                logger.info(f"Leerseiten-Entfernung: {removed_count} Seiten entfernt aus {pdf_path}")
+            else:
+                logger.debug(f"Keine leeren Seiten gefunden in {pdf_path}")
+            
+            doc.close()
+            return removed_count > 0
+            
+        except Exception as e:
+            logger.error(f"Fehler bei Leerseiten-Entfernung: {str(e)}")
+            return False
     
     @staticmethod
     def extract_preview_text(pdf_path: str, max_chars: int = 200) -> str:
