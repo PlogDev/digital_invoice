@@ -26,36 +26,19 @@ from ..schemas.dokument import (
 from ..services.ocr_service import OCRService
 from ..services.storage_service import StorageService
 
+# Logger einrichten
 logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/dokumente", tags=["Dokumente"])
 
 
 @router.get("/", response_model=DokumentList)
 async def get_dokumente():
     """
-    Ruft alle Dokumente ab und scannt nach neuen Dateien im Eingangsverzeichnis.
-    OCR wird automatisch beim Scannen neuer Dateien durchgeführt.
+    Ruft alle Dokumente ab. OCR wird automatisch im Background verarbeitet.
     """
-    
-    # Neue PDF-Dateien prüfen und mit OCR verarbeiten
-    neue_dateien = StorageService.get_input_files()  # OCR wird hier automatisch durchgeführt
-    
-    for datei in neue_dateien:
-        # Prüfen, ob Datei bereits in DB
-        vorhandene = [d for d in Dokument.get_all() if d.dateiname == datei["dateiname"]]
-        
-        if not vorhandene:
-            # Bessere Vorschau aus OCR-verarbeiteter PDF erstellen
-            vorschau = OCRService.extract_preview_text(datei["pfad"], max_chars=300)
-            
-            # In DB speichern
-            Dokument.create(
-                dateiname=datei["dateiname"],
-                pfad=datei["pfad"],
-                inhalt_vorschau=vorschau
-            )
-    
-    # Alle Dokumente abrufen
+    # Einfach alle Dokumente aus der DB abrufen
+    # OCR läuft im Background-Scheduler
     dokumente = Dokument.get_all()
     
     return {
@@ -101,7 +84,7 @@ async def get_dokument_file(dokument_id: int):
 @router.post("/upload", response_model=DokumentResponse)
 async def upload_dokument(file: UploadFile = File(...)):
     """
-    Lädt ein neues PDF-Dokument hoch und führt sofort OCR durch.
+    Lädt ein neues PDF-Dokument hoch. OCR wird automatisch im Background verarbeitet.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt")
@@ -114,29 +97,22 @@ async def upload_dokument(file: UploadFile = File(...)):
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
         
-        # Sofort OCR durchführen
-        success = StorageService._process_pdf_with_ocr_inplace(file_path)
-        
-        if not success:
-            # Fallback: Datei bleibt, aber ohne OCR
-            logger.warning(f"OCR fehlgeschlagen für hochgeladene Datei: {file.filename}")
-        
-        # OCR-Marker erstellen
-        ocr_marker_path = file_path + '.ocr_processed'
-        with open(ocr_marker_path, 'w') as marker:
-            marker.write(f"OCR processed at upload: {os.path.getmtime(file_path)}")
+        logger.info(f"Datei hochgeladen: {file.filename} - OCR wird im Background verarbeitet")
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Datei: {str(e)}")
     
-    # Vorschau-Text aus OCR-verarbeiteter PDF erstellen
-    vorschau = OCRService.extract_preview_text(file_path, max_chars=300)
+    # Einfache Vorschau ohne OCR (wird später vom Scheduler aktualisiert)
+    try:
+        basic_preview = OCRService.extract_preview_text(file_path, max_chars=100)
+    except:
+        basic_preview = f"Hochgeladen: {file.filename} - OCR wird verarbeitet..."
     
     # In DB speichern
     dokument = Dokument.create(
         dateiname=file.filename,
         pfad=file_path,
-        inhalt_vorschau=vorschau
+        inhalt_vorschau=basic_preview
     )
     
     return dokument.to_dict()
