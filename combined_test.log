@@ -1,0 +1,57 @@
+2025-06-24 16:03:37,120 - INFO - 🚀 Kombinierter Wareneingang-Test
+2025-06-24 16:03:37,121 - INFO - 🎯 Teste erste PDF: backend\pdfs\input\image-1.pdf
+2025-06-24 16:03:37,121 - INFO - 🚀 Starte VOLLSTÄNDIGEN Wareneingang-Test
+2025-06-24 16:03:37,122 - INFO - ================================================================================
+2025-06-24 16:03:37,122 - INFO - 📄 SCHRITT 1: PDF-Analyse
+2025-06-24 16:03:37,122 - INFO - ----------------------------------------
+2025-06-24 16:03:37,201 - INFO - 📝 Erste 50 Zeichen: 'Wareneingang 2501231...'
+2025-06-24 16:03:37,202 - INFO -     1: 'Wareneingang'
+2025-06-24 16:03:37,202 - INFO - ✅ 'Wareneingang' gefunden in Zeile 1
+2025-06-24 16:03:37,202 - INFO - 📦 Nächste Zeile (roh): '2501231'
+2025-06-24 16:03:37,202 - INFO - ✅ Extrahierte Lieferscheinnummer: '2501231'
+2025-06-24 16:03:37,202 - INFO - ----------------------------------------
+2025-06-24 16:03:37,202 - INFO - 📊 SCHRITT 2: CSV-Daten laden
+2025-06-24 16:03:37,202 - INFO - ----------------------------------------
+2025-06-24 16:03:37,209 - ERROR - Fehler beim Laden der CSV: Could not determine delimiter
+2025-06-24 16:03:37,209 - INFO - 📋 Gesamt: 0 CSV-Datensätze geladen
+2025-06-24 16:03:37,209 - INFO - ----------------------------------------
+2025-06-24 16:03:37,210 - ERROR - ❌ Workflow gestoppt - Keine CSV-Daten
+2025-06-24 16:03:37,210 - INFO - ❌ GESAMTERGEBNIS: FAILED
+2025-06-24 16:05:24,738 - INFO - 🚀 Kombinierter Wareneingang-Test
+2025-06-24 16:05:24,738 - INFO - 🎯 Teste erste PDF: backend\pdfs\input\image-1.pdf
+2025-06-24 16:05:24,738 - INFO - 🚀 Starte VOLLSTÄNDIGEN Wareneingang-Test
+2025-06-24 16:05:24,739 - INFO - ================================================================================
+2025-06-24 16:05:24,739 - INFO - 📄 SCHRITT 1: PDF-Analyse
+2025-06-24 16:05:24,739 - INFO - ----------------------------------------
+2025-06-24 16:05:24,817 - INFO - 📝 Erste 50 Zeichen: 'Wareneingang 2501231...'
+2025-06-24 16:05:24,817 - INFO -     1: 'Wareneingang'
+2025-06-24 16:05:24,817 - INFO - ✅ 'Wareneingang' gefunden in Zeile 1
+2025-06-24 16:05:24,817 - INFO - 📦 Nächste Zeile (roh): '2501231'
+2025-06-24 16:05:24,818 - INFO - ✅ Extrahierte Lieferscheinnummer: '2501231'
+2025-06-24 16:05:24,818 - INFO - ----------------------------------------
+2025-06-24 16:05:24,818 - INFO - 📊 SCHRITT 2: CSV-Daten laden
+2025-06-24 16:05:24,818 - INFO - ----------------------------------------
+2025-06-24 16:05:24,849 - INFO - ✅ CSV erfolgreich mit Delimiter ';' geladen
+2025-06-24 16:05:24,849 - INFO - ✅ gelieferte_chargen_einkauf.csv: 4056 Datensätze
+2025-06-24 16:05:24,850 - INFO - 📋 Gesamt: 4056 CSV-Datensätze geladen
+2025-06-24 16:05:24,850 - INFO - ----------------------------------------
+2025-06-24 16:05:24,851 - INFO - 🎯 SCHRITT 3: CSV-Matching für '2501231'
+2025-06-24 16:05:24,851 - INFO - ----------------------------------------
+2025-06-24 16:05:24,853 - INFO - ✅ Match 1: '10165 Sicherungsscheibe 312637B'
+2025-06-24 16:05:24,853 - INFO - 🎉 1 Treffer gefunden!
+2025-06-24 16:05:24,853 - INFO - ----------------------------------------
+2025-06-24 16:05:24,853 - INFO - 💾 SCHRITT 4: Simulierter DB-Import
+2025-06-24 16:05:24,854 - INFO - ----------------------------------------
+2025-06-24 16:05:24,854 - INFO - 📋 Würde Lieferschein erstellen: '2501231'
+2025-06-24 16:05:24,854 - INFO - 📊 Würde 1 Datensätze importieren:
+2025-06-24 16:05:24,855 - INFO -    1. 10165 Sicherungsscheibe 312637B (Menge: 146360)
+2025-06-24 16:05:24,855 - INFO - ----------------------------------------
+2025-06-24 16:05:24,855 - INFO - 📋 FINALE ZUSAMMENFASSUNG
+2025-06-24 16:05:24,855 - INFO - ==================================================
+2025-06-24 16:05:24,855 - INFO - 📄 PDF: image-1.pdf
+2025-06-24 16:05:24,856 - INFO - 📦 Extrahierte Lieferscheinnummer: '2501231'
+2025-06-24 16:05:24,856 - INFO - 🎯 CSV-Treffer: 1
+2025-06-24 16:05:24,856 - INFO - ✅ WORKFLOW ERFOLGREICH! 🎉
+2025-06-24 16:05:24,856 - INFO - 💡 Das System würde funktionieren
+2025-06-24 16:05:24,857 - INFO - ==================================================
+2025-06-24 16:05:24,859 - INFO - 🎉 GESAMTERGEBNIS: SUCCESS

@@ -221,7 +221,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
     
     def _load_single_csv(self, csv_path: str) -> List[dict]:
         """
-        Lädt eine einzelne CSV-Datei.
+        Lädt eine einzelne CSV-Datei mit robustem Delimiter-Detection.
         
         Args:
             csv_path: Pfad zur CSV-Datei
@@ -232,18 +232,44 @@ class WareneingangProcessor(BaseDocumentProcessor):
         try:
             csv_data = []
             
-            # CSV mit Semikolon-Delimiter laden (deutsche CSV-Konvention)
-            with open(csv_path, 'r', encoding='utf-8', errors='ignore') as csvfile:
-                # Delimiter automatisch erkennen
-                dialect = csv.Sniffer().sniff(csvfile.read(1024), delimiters=';,\t')
-                csvfile.seek(0)
-                
-                reader = csv.DictReader(csvfile, delimiter=dialect.delimiter)
-                
-                for row in reader:
-                    # Whitespace von allen Werten entfernen
-                    cleaned_row = {key.strip(): value.strip() for key, value in row.items()}
-                    csv_data.append(cleaned_row)
+            # Encoding detection
+            with open(csv_path, 'rb') as f:
+                raw_data = f.read(1024)
+            
+            # UTF-8 BOM prüfen
+            if raw_data.startswith(b'\xef\xbb\xbf'):
+                encoding = 'utf-8-sig'
+            else:
+                encoding = 'utf-8'
+            
+            # Robuster CSV-Loading mit mehreren Delimiter-Versuchen
+            delimiters_to_try = [';', ',', '\t', '|']
+            
+            for delimiter in delimiters_to_try:
+                try:
+                    with open(csv_path, 'r', encoding=encoding, errors='ignore') as csvfile:
+                        reader = csv.DictReader(csvfile, delimiter=delimiter)
+                        
+                        # Test: Ersten Datensatz lesen
+                        first_row = next(reader, None)
+                        if first_row and len(first_row) > 10:  # Mind. 10 Spalten erwarten
+                            # Reset und alle Daten laden
+                            csvfile.seek(0)
+                            reader = csv.DictReader(csvfile, delimiter=delimiter)
+                            
+                            for row in reader:
+                                # Whitespace entfernen
+                                cleaned_row = {key.strip(): value.strip() for key, value in row.items()}
+                                csv_data.append(cleaned_row)
+                            
+                            self.logger.info(f"✅ CSV erfolgreich mit Delimiter '{delimiter}' geladen: {csv_path}")
+                            break
+                            
+                except Exception:
+                    continue  # Nächsten Delimiter versuchen
+            
+            if not csv_data:
+                self.logger.error(f"❌ CSV konnte mit keinem Delimiter geladen werden: {csv_path}")
             
             return csv_data
             

@@ -145,8 +145,8 @@ class OCRScheduler:
         Vollständige Verarbeitung einer PDF-Datei:
         1. OCR-Verarbeitung
         2. Leerseiten-Entfernung
-        3. Document Processing (NEU)
-        4. Datenbankregistrierung
+        3. Datenbankregistrierung (WICHTIG: VOR Document Processing!)
+        4. Document Processing
         """
         try:
             file_path = os.path.join(PDF_INPUT_DIR, filename)
@@ -170,7 +170,10 @@ class OCRScheduler:
             except Exception as e:
                 logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen für {filename}: {e}")
             
-            # 3. NEU: Document Processing
+            # 3. WICHTIG: Zuerst in Datenbank hinzufügen (VOR Document Processing!)
+            await self._add_to_database(filename, file_path)
+            
+            # 4. Dann Document Processing (Dokument ist jetzt in DB verfügbar)
             try:
                 if self._document_processor_manager:
                     doc_processed = await self._document_processor_manager.process_document(
@@ -188,16 +191,13 @@ class OCRScheduler:
                 logger.error(f"Document Processing fehlgeschlagen für {filename}: {e}")
                 # Nicht kritisch - OCR war erfolgreich, Processing ist optional
             
-            # 4. Verarbeitungsmarker erstellen
+            # 5. Verarbeitungsmarker erstellen
             ocr_marker = file_path + '.ocr_processed'
             with open(ocr_marker, 'w') as marker:
                 marker.write(f"OCR + Processing: {os.path.getmtime(file_path)}")
             
-            # 5. Als verarbeitet markieren
+            # 6. Als verarbeitet markieren
             self.processed_files.add(filename)
-            
-            # 6. In Datenbank hinzufügen falls noch nicht vorhanden
-            await self._add_to_database(filename, file_path)
             
             logger.info(f"✅ Vollverarbeitung abgeschlossen: {filename}")
             
