@@ -90,11 +90,13 @@ class OCRScheduler:
                 if filename.lower().endswith('.pdf'):
                     file_path = os.path.join(PDF_INPUT_DIR, filename)
                     ocr_marker = file_path + '.ocr_processed'
+                    doc_marker = file_path + '.doc_processed'
                     
-                    if os.path.exists(ocr_marker):
+                    # Als verarbeitet markieren wenn beide Marker vorhanden sind
+                    if os.path.exists(ocr_marker) and os.path.exists(doc_marker):
                         self.processed_files.add(filename)
             
-            logger.info(f"Bereits verarbeitete Dateien geladen: {len(self.processed_files)}")
+            logger.info(f"Bereits vollständig verarbeitete Dateien geladen: {len(self.processed_files)}")
             
         except Exception as e:
             logger.error(f"Fehler beim Laden verarbeiteter Dateien: {e}")
@@ -120,86 +122,132 @@ class OCRScheduler:
             if not os.path.exists(PDF_INPUT_DIR):
                 return
             
-            new_files = []
+            files_to_process = []
             
-            # Nach neuen PDF-Dateien suchen
+            # ALLE PDF-Dateien prüfen (nicht nur unverarbeitete)
             for filename in os.listdir(PDF_INPUT_DIR):
-                if (filename.lower().endswith('.pdf') and 
-                    filename not in self.processed_files):
-                    new_files.append(filename)
+                if filename.lower().endswith('.pdf'):
+                    file_path = os.path.join(PDF_INPUT_DIR, filename)
+                    
+                    # Prüfen ob in DB vorhanden
+                    in_database = self._is_file_in_database(filename)
+                    
+                    # OCR-Status prüfen
+                    ocr_marker = file_path + '.ocr_processed'
+                    ocr_done = os.path.exists(ocr_marker)
+                    
+                    # Document Processing Status prüfen
+                    doc_processing_marker = file_path + '.doc_processed'
+                    doc_processing_done = os.path.exists(doc_processing_marker)
+                    
+                    # Verarbeitung nötig wenn:
+                    # - Noch nicht in processed_files UND
+                    # - (OCR fehlt ODER nicht in DB ODER Document Processing fehlt)
+                    if (filename not in self.processed_files and 
+                        (not ocr_done or not in_database or not doc_processing_done)):
+                        files_to_process.append(filename)
             
-            if not new_files:
-                return  # Keine neuen Dateien
+            if not files_to_process:
+                return  # Nichts zu tun
             
-            logger.info(f"Neue Dateien gefunden: {new_files}")
+            logger.info(f"Dateien für Verarbeitung: {files_to_process}")
             
-            # Neue Dateien verarbeiten
-            for filename in new_files:
+            # Dateien verarbeiten
+            for filename in files_to_process:
                 await self._process_single_file_complete(filename)
         
         except Exception as e:
             logger.error(f"Fehler beim Prüfen der Dateien: {e}")
     
+    def _is_file_in_database(self, filename: str) -> bool:
+        """Prüft ob Datei bereits in Datenbank ist."""
+        try:
+            from ..models.dokument import Dokument
+            dokumente = Dokument.get_all()
+            return any(d.dateiname == filename for d in dokumente)
+        except Exception as e:
+            logger.error(f"Fehler beim DB-Check: {e}")
+            return False
+    
     async def _process_single_file_complete(self, filename: str):
         """
-        Vollständige Verarbeitung einer PDF-Datei:
-        1. OCR-Verarbeitung
-        2. Leerseiten-Entfernung
-        3. Datenbankregistrierung (WICHTIG: VOR Document Processing!)
-        4. Document Processing
+        Vollständige Verarbeitung - kann mehrfach aufgerufen werden.
+        Überspringt bereits erledigte Schritte.
         """
         try:
             file_path = os.path.join(PDF_INPUT_DIR, filename)
             
-            logger.info(f"🔄 Starte Vollverarbeitung: {filename}")
+            logger.info(f"🔄 Verarbeite: {filename}")
             
-            # 1. OCR in separatem Thread ausführen (CPU-intensiv)
-            success = await asyncio.to_thread(
-                self._run_ocr_sync, file_path
-            )
-            
-            if not success:
-                logger.warning(f"❌ OCR fehlgeschlagen: {filename}")
-                return
-            
-            # 2. Leerseiten-Entfernung (optional, nicht kritisch)
-            try:
-                await asyncio.to_thread(
-                    self._remove_blank_pages_pillow, file_path
-                )
-            except Exception as e:
-                logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen für {filename}: {e}")
-            
-            # 3. WICHTIG: Zuerst in Datenbank hinzufügen (VOR Document Processing!)
-            await self._add_to_database(filename, file_path)
-            
-            # 4. Dann Document Processing (Dokument ist jetzt in DB verfügbar)
-            try:
-                if self._document_processor_manager:
-                    doc_processed = await self._document_processor_manager.process_document(
-                        file_path, filename
-                    )
-                    
-                    if doc_processed:
-                        logger.info(f"📄 Document Processing erfolgreich für: {filename}")
-                    else:
-                        logger.debug(f"Kein Document Processor für: {filename}")
-                else:
-                    logger.debug("Document Processing System nicht verfügbar")
-                    
-            except Exception as e:
-                logger.error(f"Document Processing fehlgeschlagen für {filename}: {e}")
-                # Nicht kritisch - OCR war erfolgreich, Processing ist optional
-            
-            # 5. Verarbeitungsmarker erstellen
+            # Marker-Pfade
             ocr_marker = file_path + '.ocr_processed'
-            with open(ocr_marker, 'w') as marker:
-                marker.write(f"OCR + Processing: {os.path.getmtime(file_path)}")
+            doc_processing_marker = file_path + '.doc_processed'
             
-            # 6. Als verarbeitet markieren
+            # 1. OCR falls nötig
+            if not os.path.exists(ocr_marker):
+                logger.info(f"📝 Starte OCR: {filename}")
+                success = await asyncio.to_thread(self._run_ocr_sync, file_path)
+                
+                if success:
+                    # OCR-Marker erstellen
+                    with open(ocr_marker, 'w') as marker:
+                        marker.write(f"OCR: {os.path.getmtime(file_path)}")
+                    logger.info(f"✅ OCR abgeschlossen: {filename}")
+                else:
+                    logger.warning(f"❌ OCR fehlgeschlagen: {filename}")
+                    return
+            else:
+                logger.debug(f"⏭️  OCR bereits vorhanden: {filename}")
+            
+            # 2. Leerseiten-Entfernung (optional)
+            try:
+                await asyncio.to_thread(self._remove_blank_pages_pillow, file_path)
+            except Exception as e:
+                logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen: {e}")
+            
+            # 3. DB-Eintrag falls nötig
+            if not self._is_file_in_database(filename):
+                logger.info(f"📋 Füge zur DB hinzu: {filename}")
+                await self._add_to_database(filename, file_path)
+            else:
+                logger.debug(f"⏭️  Bereits in DB: {filename}")
+            
+            # 4. Document Processing falls nötig
+            if not os.path.exists(doc_processing_marker):
+                logger.info(f"📄 Starte Document Processing: {filename}")
+                
+                try:
+                    if self._document_processor_manager:
+                        doc_processed = await self._document_processor_manager.process_document(
+                            file_path, filename
+                        )
+                        
+                        # Document Processing Marker erstellen (egal ob erfolgreich oder nicht)
+                        with open(doc_processing_marker, 'w') as marker:
+                            marker.write(f"Doc Processing: {os.path.getmtime(file_path)}")
+                        
+                        if doc_processed:
+                            logger.info(f"✅ Document Processing erfolgreich: {filename}")
+                        else:
+                            logger.debug(f"ℹ️  Kein Processor gefunden: {filename}")
+                    else:
+                        logger.debug("Document Processing System nicht verfügbar")
+                        # Trotzdem Marker erstellen
+                        with open(doc_processing_marker, 'w') as marker:
+                            marker.write(f"Doc Processing unavailable: {os.path.getmtime(file_path)}")
+                            
+                except Exception as e:
+                    logger.error(f"Document Processing Fehler für {filename}: {e}")
+                    # Marker trotzdem erstellen um endlose Wiederholung zu vermeiden
+                    with open(doc_processing_marker, 'w') as marker:
+                        marker.write(f"Doc Processing failed: {os.path.getmtime(file_path)}")
+            else:
+                logger.debug(f"⏭️  Document Processing bereits erledigt: {filename}")
+            
+            # 5. Als vollständig verarbeitet markieren
             self.processed_files.add(filename)
             
-            logger.info(f"✅ Vollverarbeitung abgeschlossen: {filename}")
+            logger.info(f"✨ Vollständig verarbeitet: {filename}")
             
         except Exception as e:
             logger.error(f"Fehler bei Vollverarbeitung von {filename}: {e}")

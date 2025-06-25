@@ -1,140 +1,127 @@
-Auflistung der Ordnerpfade f|r Volume Windows
-Volumeseriennummer : 5A0A-3B0A
-digital_invoice
-|
-|   Dateistruktur.txt
-|   README.md
-|   setup_projekt.py
-|   
-+---backend
-|   |   .gitignore
-|   |   dokumente.db
-|   |   README.md
-|   |   requirements.txt
-|   |   
-|   +---app
-|   |   |   main.py
-|   |   |   __init__.py
-|   |   |   
-|   |   +---config
-|   |   |   |   settings.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           settings.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---database
-|   |   |   |   connection.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           connection.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---models
-|   |   |   |   dokument.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           dokument.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---routes
-|   |   |   |   dokumente.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           dokumente.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---schemas
-|   |   |   |   dokument.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           dokument.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---services
-|   |   |   |   ocr_service.py
-|   |   |   |   storage_service.py
-|   |   |   |   __init__.py
-|   |   |   |   
-|   |   |   +---__pycache__
-|   |   |           ocr_service.cpython-311.pyc
-|   |   |           storage_service.cpython-311.pyc
-|   |   |           __init__.cpython-311.pyc
-|   |   |           
-|   |   +---static
-|   |   |   +---images
-|   |   |           Logo-gross-neu.png
-|   |   |           
-|   |   +---utils
-|   |   |       helpers.py
-|   |   |       __init__.py
-|   |   |       
-|   |   +---__pycache__
-|   |           main.cpython-311.pyc
-|   |           __init__.cpython-311.pyc
-|   |           
-|   +---pdfs
-|       +---input
-|       |       .gitkeep
-|       |       image-1.pdf
-|       |       
-|       +---processed
-|           +---berta
-|           +---irrlaeufer
-|           +---kosten
-+---frontend
-    |   .gitignore
-    |   eslint.config.js
-    |   index.html
-    |   package-lock.json
-    |   package.json
-    |   postcss.config.js
-    |   README.md
-    |   tailwind.config.js
-    |   vite.config.ts
-    |   
-    +---node_modules
-    | ...          
-    +---public
-    |   |   vite.svg
-    |   |   
-    |   +---images
-    |   |       Logo-gross-neu.png
-    |   |       
-    |   +---pdf-worker
-    |           pdf.worker.min.mjs
-    |           
-    +---src
-        |   App.css
-        |   App.tsx
-        |   index.css
-        |   main.tsx
-        |   
-        +---assets
-        |       react.svg
-        |       
-        +---components
-        |   +---DocumentList
-        |   |       DocumentList.tsx
-        |   |       DocumentListItem.tsx
-        |   |       index.ts
-        |   |       
-        |   +---DocumentViewer
-        |   |       DocumentViewer.tsx
-        |   |       index.ts
-        |   |       
-        |   +---MetadataForm
-        |           index.ts
-        |           MetadataForm.tsx
-        |           
-        +---services
-        |       api.ts
-        |       
-        +---types
-                index.ts
-                
+.
+├── backend
+│   ├── app
+│   │   ├── config
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-310.pyc
+│   │   │   │   └── settings.cpython-310.pyc
+│   │   │   └── settings.py
+│   │   ├── database
+│   │   │   ├── connection.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── connection.cpython-310.pyc
+│   │   │       └── __init__.cpython-310.pyc
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── models
+│   │   │   ├── dokument.py
+│   │   │   ├── __init__.py
+│   │   │   ├── lieferschein.py
+│   │   │   └── __pycache__
+│   │   │       ├── dokument.cpython-310.pyc
+│   │   │       └── __init__.cpython-310.pyc
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-310.pyc
+│   │   │   └── main.cpython-310.pyc
+│   │   ├── routes
+│   │   │   ├── dokumente.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── dokumente.cpython-310.pyc
+│   │   │       └── __init__.cpython-310.pyc
+│   │   ├── schemas
+│   │   │   ├── dokument.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── dokument.cpython-310.pyc
+│   │   │       └── __init__.cpython-310.pyc
+│   │   ├── services
+│   │   │   ├── document_processing
+│   │   │   │   ├── base_processor.py
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── wareneingang_processor.py
+│   │   │   ├── __init__.py
+│   │   │   ├── ocr_scheduler.py
+│   │   │   ├── ocr_service.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── __init__.cpython-310.pyc
+│   │   │   │   ├── ocr_scheduler.cpython-310.pyc
+│   │   │   │   ├── ocr_service.cpython-310.pyc
+│   │   │   │   └── storage_service.cpython-310.pyc
+│   │   │   └── storage_service.py
+│   │   ├── static
+│   │   │   └── images
+│   │   │       └── Logo-gross-neu.png
+│   │   └── utils
+│   │       ├── helpers.py
+│   │       └── __init__.py
+│   ├── dokumente.db
+│   ├── pdfs
+│   │   ├── csv_lists
+│   │   │   └── gelieferte_chargen_einkauf.csv
+│   │   ├── input
+│   │   │   ├── image-1.pdf
+│   │   │   ├── image-1.pdf.ocr_processed
+│   │   │   ├── image-2.pdf
+│   │   │   ├── image-2.pdf.ocr_processed
+│   │   │   ├── image-3.pdf
+│   │   │   ├── image-3.pdf.ocr_processed
+│   │   │   ├── image-4.pdf
+│   │   │   ├── image-4.pdf.ocr_processed
+│   │   │   ├── image.pdf
+│   │   │   └── image.pdf.ocr_processed
+│   │   └── processed
+│   │       ├── berta
+│   │       ├── irrlaeufer
+│   │       └── kosten
+│   ├── README.md
+│   └── requirements.txt
+├── combined_test.log
+├── csv_debug.log
+├── csv_debug.py
+├── Dateistruktur.txt
+├── frontend
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   ├── images
+│   │   │   └── Logo-gross-neu.png
+│   │   ├── pdf-worker
+│   │   │   └── pdf.worker.min.mjs
+│   │   └── vite.svg
+│   ├── README.md
+│   ├── src
+│   │   ├── App.css
+│   │   ├── App.tsx
+│   │   ├── assets
+│   │   │   └── react.svg
+│   │   ├── components
+│   │   │   ├── DocumentList
+│   │   │   │   ├── DocumentListItem.tsx
+│   │   │   │   ├── DocumentList.tsx
+│   │   │   │   └── index.ts
+│   │   │   ├── DocumentViewer
+│   │   │   │   ├── DocumentViewer.tsx
+│   │   │   │   └── index.ts
+│   │   │   └── MetadataForm
+│   │   │       ├── index.ts
+│   │   │       └── MetadataForm.tsx
+│   │   ├── index.css
+│   │   ├── main.tsx
+│   │   ├── services
+│   │   │   └── api.ts
+│   │   └── types
+│   │       └── index.ts
+│   ├── tailwind.config.js
+│   └── vite.config.ts
+├── README.md
+├── setup_projekt.py
+├── wareneingang_test.log
+└── wareneingang_test.py
+
+1116 directories, 11348 files

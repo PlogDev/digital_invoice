@@ -113,6 +113,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
         Extrahiert die Lieferscheinnummer aus dem PDF.
         
         Sucht nach "Wareneingang" und nimmt die nächste Zeile als Lieferscheinnummer.
+        BEHÄLT ALLE Zeichen bei (auch Sonderzeichen wie /, -, etc.)
         """
         try:
             lines = self._extract_text_from_pdf(pdf_path, max_lines=30)
@@ -123,12 +124,23 @@ class WareneingangProcessor(BaseDocumentProcessor):
                     if i + 1 < len(lines):
                         next_line = lines[i + 1].strip()
                         
-                        # Bereinige die Lieferscheinnummer (nur Buchstaben, Zahlen, Bindestrich)
-                        lieferscheinnummer = re.sub(r'[^A-Za-z0-9\-_]', '', next_line)
+                        # MINIMAL bereinigen - nur Whitespace und Steuerzeichen entfernen
+                        # Alle anderen Zeichen (/, -, etc.) BEIBEHALTEN
+                        lieferscheinnummer = ''.join(char for char in next_line 
+                                                   if char.isprintable() and not char.isspace())
                         
+                        # Validierung: Mindestlänge und nicht nur Sonderzeichen
                         if lieferscheinnummer and len(lieferscheinnummer) >= 3:
-                            return lieferscheinnummer
+                            # Prüfen ob mindestens ein alphanumerisches Zeichen vorhanden
+                            if any(char.isalnum() for char in lieferscheinnummer):
+                                self.logger.debug(f"Extrahierte Lieferscheinnummer: '{lieferscheinnummer}'")
+                                return lieferscheinnummer
+                            else:
+                                self.logger.warning(f"Lieferscheinnummer enthält nur Sonderzeichen: '{lieferscheinnummer}'")
+                        else:
+                            self.logger.warning(f"Lieferscheinnummer zu kurz oder leer: '{lieferscheinnummer}'")
             
+            self.logger.warning("Keine gültige Lieferscheinnummer gefunden")
             return None
             
         except Exception as e:
@@ -150,28 +162,50 @@ class WareneingangProcessor(BaseDocumentProcessor):
     async def _import_csv_data(self, lieferschein: Lieferschein, lieferscheinnummer: str) -> int:
         """
         Importiert CSV-Daten für die gegebene Lieferscheinnummer.
-        
-        Returns:
-            Anzahl der importierten Datensätze
+        Jetzt mit verbessertem Matching und Logging.
         """
         try:
             # CSV-Dateien laden (mit Cache)
             csv_data = await self._load_csv_files()
             
+            if not csv_data:
+                self.logger.warning("Keine CSV-Daten verfügbar")
+                return 0
+            
             import_count = 0
+            found_similar = []  # Für Debugging bei nicht gefundenen Nummern
+            
+            self.logger.info(f"🔍 Suche nach Lieferscheinnummer: '{lieferscheinnummer}' in {len(csv_data)} CSV-Datensätzen")
             
             # In allen CSV-Datensätzen nach der Lieferscheinnummer suchen
             for csv_row in csv_data:
-                csv_lieferscheinnr = csv_row.get('LIEFERSCHEINNR', '').strip()
+                csv_lieferscheinnr = str(csv_row.get('LIEFERSCHEINNR', '')).strip()
                 
+                # Exakter Match
                 if csv_lieferscheinnr == lieferscheinnummer:
                     # Datensatz importieren
                     LieferscheinDatensatz.create_from_csv_row(lieferschein.id, csv_row)
                     import_count += 1
                     
-                    self.logger.debug(f"CSV-Datensatz importiert: {csv_row.get('ARTIKEL', 'N/A')}")
+                    artikel = csv_row.get('ARTIKEL', 'N/A')
+                    self.logger.debug(f"✅ CSV-Datensatz importiert: {artikel}")
+                
+                # Für Debugging: ähnliche Nummern sammeln
+                elif (csv_lieferscheinnr and 
+                      len(csv_lieferscheinnr) >= 3 and
+                      (lieferscheinnummer in csv_lieferscheinnr or csv_lieferscheinnr in lieferscheinnummer)):
+                    found_similar.append(csv_lieferscheinnr)
             
-            self.logger.info(f"📊 {import_count} CSV-Datensätze für Lieferschein {lieferscheinnummer} importiert")
+            if import_count > 0:
+                self.logger.info(f"📊 {import_count} CSV-Datensätze für Lieferschein '{lieferscheinnummer}' importiert")
+            else:
+                self.logger.warning(f"❌ Keine CSV-Datensätze für '{lieferscheinnummer}' gefunden")
+                
+                # Debug: ähnliche Nummern anzeigen
+                if found_similar:
+                    similar_unique = list(set(found_similar[:5]))  # Erste 5 unique
+                    self.logger.info(f"🔍 Ähnliche Lieferscheinnummern gefunden: {similar_unique}")
+            
             return import_count
             
         except Exception as e:
