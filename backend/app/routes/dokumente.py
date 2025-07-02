@@ -4,6 +4,11 @@ Aktualisiert von SQLite auf PostgreSQL mit neuer Kategorien-Struktur.
 """
 
 import logging
+
+logger = logging.getLogger(__name__)
+logger.info("🔍 dokumente.py wurde neu geladen!")
+
+import logging
 import os
 import shutil
 from pathlib import Path as PathLib
@@ -59,6 +64,11 @@ async def get_dokumente():
     
     # Alle Dokumente abrufen (Repository gibt schon Dictionaries zurück)
     dokumente = DokumentRepository.get_all()
+    
+    # TEMPORÄRES DEBUG
+    logger.info(f"🔍 DEBUG: Gefunden {len(dokumente)} Dokumente")
+    for doc in dokumente[-2:]:  # Letzte 2 anzeigen
+        logger.info(f"🔍 DEBUG: {doc['dateiname']} -> kategorie={doc.get('kategorie')}, unterkategorie={doc.get('unterkategorie')}")
     
     return {
         "dokumente": dokumente,
