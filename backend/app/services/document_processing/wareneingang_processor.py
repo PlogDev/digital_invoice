@@ -1,6 +1,7 @@
 """
 Wareneingang Document Processor.
 Verarbeitet PDFs mit "Wareneingang" und importiert zugehörige CSV-Daten.
+Aktualisiert für PostgreSQL-Repository-Pattern.
 """
 
 import csv
@@ -10,8 +11,12 @@ from pathlib import Path
 from typing import List, Optional
 
 from ...config.settings import CSV_LIST_DIR
-from ...models.dokument import Dokument
-from ...models.lieferschein import Lieferschein, LieferscheinDatensatz
+from ...database.seed_data import get_unterkategorie_by_name
+from ...repositories.dokument_repository import DokumentRepository
+from ...repositories.lieferschein_repository import (
+    ChargenEinkaufRepository,
+    LieferscheinExternRepository,
+)
 from .base_processor import BaseDocumentProcessor
 
 
@@ -22,8 +27,9 @@ class WareneingangProcessor(BaseDocumentProcessor):
     Workflow:
     1. Prüft PDF-Text auf "Wareneingang"
     2. Extrahiert Lieferscheinnummer (nächste Zeile)
-    3. Sucht in CSV-Dateien nach der Lieferscheinnummer
-    4. Importiert gefundene Datensätze in die Datenbank
+    3. Kategorisiert als "Lieferschein_extern"
+    4. Sucht in CSV-Dateien nach der Lieferscheinnummer
+    5. Importiert gefundene Datensätze in die Datenbank
     """
     
     def __init__(self):
@@ -56,9 +62,10 @@ class WareneingangProcessor(BaseDocumentProcessor):
         Verarbeitet ein Wareneingang-PDF.
         
         1. Extrahiert Lieferscheinnummer
-        2. Lädt CSV-Dateien
-        3. Sucht passende Datensätze
-        4. Importiert in Datenbank
+        2. Kategorisiert Dokument
+        3. Lädt CSV-Dateien
+        4. Sucht passende Datensätze
+        5. Importiert in Datenbank
         """
         self._log_processing_start(pdf_path)
         
@@ -71,29 +78,38 @@ class WareneingangProcessor(BaseDocumentProcessor):
             
             self.logger.info(f"📦 Lieferscheinnummer extrahiert: {lieferscheinnummer}")
             
-            # 2. Zugehöriges Dokument in DB finden
-            dokument = self._find_document_by_path(pdf_path)
-            if not dokument:
+            # 2. Zugehöriges Dokument in DB finden (mit neuem Repository)
+            dokument_dict = self._find_document_by_path(pdf_path)
+            if not dokument_dict:
                 self._log_processing_error(pdf_path, "Dokument nicht in Datenbank gefunden")
                 return False
             
-            # 3. Prüfen ob Lieferschein bereits existiert
-            existing_lieferschein = Lieferschein.get_by_lieferscheinnummer(lieferscheinnummer)
+            # 3. Dokument als Lieferschein_extern kategorisieren
+            updated_dokument = self._categorize_document(dokument_dict["id"])
+            if not updated_dokument:
+                self._log_processing_error(pdf_path, "Fehler beim Kategorisieren")
+                return False
+            
+            # 4. Prüfen ob Lieferschein bereits existiert
+            existing_lieferschein = LieferscheinExternRepository.get_by_lieferscheinnummer(lieferscheinnummer)
             if existing_lieferschein:
                 self.logger.info(f"Lieferschein bereits vorhanden: {lieferscheinnummer}")
                 return True
             
-            # 4. Neuen Lieferschein erstellen
-            lieferschein = Lieferschein.create(lieferscheinnummer, dokument.id)
-            self.logger.info(f"📋 Lieferschein erstellt: ID {lieferschein.id}")
+            # 5. Neuen externen Lieferschein erstellen
+            lieferschein = LieferscheinExternRepository.create(lieferscheinnummer, dokument_dict["id"])
+            if not lieferschein:
+                self._log_processing_error(pdf_path, "Fehler beim Erstellen des Lieferscheins")
+                return False
+                
+            self.logger.info(f"📋 Externer Lieferschein erstellt: ID {lieferschein.id}")
             
-            # 5. CSV-Daten laden und importieren
+            # 6. CSV-Daten laden und importieren
             csv_import_count = await self._import_csv_data(lieferschein, lieferscheinnummer)
             
             if csv_import_count > 0:
                 # Als importiert markieren
-                lieferschein.csv_importiert = True
-                lieferschein.update()
+                LieferscheinExternRepository.mark_csv_imported(lieferschein.id)
                 
                 self._log_processing_success(
                     pdf_path, 
@@ -147,19 +163,47 @@ class WareneingangProcessor(BaseDocumentProcessor):
             self.logger.error(f"Fehler beim Extrahieren der Lieferscheinnummer: {e}")
             return None
     
-    def _find_document_by_path(self, pdf_path: str) -> Optional[Dokument]:
-        """Findet das Dokument in der Datenbank anhand des Pfads."""
+    def _find_document_by_path(self, pdf_path: str) -> Optional[dict]:
+        """Findet das Dokument in der Datenbank anhand des Pfads (mit neuem Repository)."""
         try:
-            documents = Dokument.get_all()
-            for doc in documents:
-                if doc.pfad == pdf_path:
-                    return doc
+            # Dateiname aus Pfad extrahieren
+            filename = os.path.basename(pdf_path)
+            
+            # Fallback: Alle Dokumente durchsuchen (gibt bereits Dictionaries zurück)
+            all_dokumente = DokumentRepository.get_all()
+            for dok_dict in all_dokumente:
+                if dok_dict["dateiname"] == filename or dok_dict["pfad"] == pdf_path:
+                    return dok_dict
+            
+            self.logger.warning(f"Dokument nicht gefunden: {filename}")
             return None
+            
         except Exception as e:
             self.logger.error(f"Fehler beim Suchen des Dokuments: {e}")
             return None
     
-    async def _import_csv_data(self, lieferschein: Lieferschein, lieferscheinnummer: str) -> int:
+    def _categorize_document(self, dokument_id: int) -> Optional[dict]:
+        """Kategorisiert Dokument als Lieferschein_extern."""
+        try:
+            # Dokument als "Lieferscheine/Lieferschein_extern" kategorisieren
+            updated_dokument = DokumentRepository.update_kategorie(
+                dokument_id, 
+                "Lieferscheine", 
+                "Lieferschein_extern"
+            )
+            
+            if updated_dokument:
+                self.logger.info(f"📂 Dokument {dokument_id} als Lieferschein_extern kategorisiert")
+                return updated_dokument
+            else:
+                self.logger.error(f"Fehler beim Kategorisieren von Dokument {dokument_id}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Fehler beim Kategorisieren: {e}")
+            return None
+    
+    async def _import_csv_data(self, lieferschein, lieferscheinnummer: str) -> int:
         """
         Importiert CSV-Daten für die gegebene Lieferscheinnummer.
         Jetzt mit verbessertem Matching und Logging.
@@ -183,12 +227,12 @@ class WareneingangProcessor(BaseDocumentProcessor):
                 
                 # Exakter Match
                 if csv_lieferscheinnr == lieferscheinnummer:
-                    # Datensatz importieren
-                    LieferscheinDatensatz.create_from_csv_row(lieferschein.id, csv_row)
-                    import_count += 1
-                    
-                    artikel = csv_row.get('ARTIKEL', 'N/A')
-                    self.logger.debug(f"✅ CSV-Datensatz importiert: {artikel}")
+                    # Datensatz importieren (mit neuem Repository)
+                    charge = ChargenEinkaufRepository.create_from_csv_row(lieferschein.id, csv_row)
+                    if charge:
+                        import_count += 1
+                        artikel = csv_row.get('ARTIKEL', 'N/A')
+                        self.logger.debug(f"✅ CSV-Datensatz importiert: {artikel}")
                 
                 # Für Debugging: ähnliche Nummern sammeln
                 elif (csv_lieferscheinnr and 

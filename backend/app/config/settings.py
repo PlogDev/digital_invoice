@@ -1,88 +1,56 @@
 """
-Konfigurationseinstellungen für die Anwendung.
+Konfigurationseinstellungen für das OCR-Dokumentenverwaltungssystem.
+Aktualisiert für PostgreSQL statt SQLite.
 """
 
-import json
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
 
-# Basispfade
+# Basis-Verzeichnis des Projekts
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-PDF_DIR = BASE_DIR / "pdfs"
+
+# ENTFERNT: DATABASE_PATH (war für SQLite)
+# Jetzt verwenden wir PostgreSQL über DATABASE_URL
 
 # PDF-Verzeichnisse
-PDF_INPUT_DIR = PDF_DIR / "input"
-PDF_PROCESSED_DIR = PDF_DIR / "processed"
-CSV_LIST_DIR = PDF_DIR / "csv_lists"
+PDF_BASE_DIR = BASE_DIR / "pdfs"
+PDF_INPUT_DIR = PDF_BASE_DIR / "input"
+PDF_PROCESSED_DIR = PDF_BASE_DIR / "processed"
 
+# CSV-Verzeichnis für Lieferschein-Daten
+CSV_LIST_DIR = PDF_BASE_DIR / "csv_lists"
 
-# Kategorien und deren Verzeichnisse
+# Kategorie-Verzeichnisse (Legacy - könnte später entfernt werden)
 PDF_CATEGORIES = {
     "berta": PDF_PROCESSED_DIR / "berta",
-    "kosten": PDF_PROCESSED_DIR / "kosten",
+    "kosten": PDF_PROCESSED_DIR / "kosten", 
     "irrlaeufer": PDF_PROCESSED_DIR / "irrlaeufer"
 }
 
-# Datenbank
-DATABASE_PATH = BASE_DIR / "dokumente.db"
+# Verzeichnisse erstellen
+for directory in [PDF_INPUT_DIR, PDF_PROCESSED_DIR, CSV_LIST_DIR]:
+    directory.mkdir(parents=True, exist_ok=True)
+
+for category_dir in PDF_CATEGORIES.values():
+    category_dir.mkdir(parents=True, exist_ok=True)
 
 # OCR-Einstellungen
-TESSERACT_CMD = r"tesseract"  # Pfad zu tesseract.exe unter Windows anpassen
-OCR_LANGUAGE = "deu"  # OCR-Sprache: Deutsch
-OCR_PREVIEW_LENGTH = 100  # Anzahl der Zeichen für die Vorschau
+OCR_LANGUAGE = "deu"
 
-# API
+# API-Einstellungen
 API_PREFIX = "/api"
-CORS_ORIGINS = ["*"]  # Für Produktivbetrieb einschränken
+CORS_ORIGINS = [
+    "http://localhost:3000",  # Frontend Development
+    "http://localhost:8081",  # Backend
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8081",
+]
 
-# Stellen sicher, dass alle Verzeichnisse existieren
-for path in [PDF_INPUT_DIR] + list(PDF_CATEGORIES.values()):
-    os.makedirs(path, exist_ok=True)
+# PostgreSQL-Einstellungen (aus Environment oder Default)
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql://ocr_user:ocr_secure_2024@localhost:5432/ocr_docs"
+)
 
-class Settings:
-    """Einstellungsklasse zum einfachen Zugriff auf Konfigurationswerte."""
-    
-    @classmethod
-    def load_config(cls) -> dict:
-        """Lädt Konfiguration aus Datei oder verwendet Standardwerte."""
-        config_path = BASE_DIR / "config.json"
-        
-        if config_path.exists():
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                pass
-        
-        # Standardkonfiguration
-        return {
-            "pdf_dirs": {
-                "input": str(PDF_INPUT_DIR),
-                "categories": {
-                    "berta": str(PDF_CATEGORIES["berta"]),
-                    "kosten": str(PDF_CATEGORIES["kosten"]),
-                    "irrlaeufer": str(PDF_CATEGORIES["irrlaeufer"])
-                }
-            },
-            "ocr": {
-                "language": OCR_LANGUAGE,
-                "preview_length": OCR_PREVIEW_LENGTH
-            },
-            "tesseract_path": TESSERACT_CMD
-        }
-    
-    @classmethod
-    def save_config(cls, config: dict) -> bool:
-        """Speichert Konfiguration in Datei."""
-        config_path = BASE_DIR / "config.json"
-        
-        try:
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4)
-            return True
-        except IOError:
-            return False
-
-# Globale Einstellungsinstanz
-settings = Settings()
+# Server-Port (für Docker)
+PORT = int(os.getenv("PORT", 8081))

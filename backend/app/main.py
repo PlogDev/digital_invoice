@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config.settings import API_PREFIX, CORS_ORIGINS
-from .database.connection import init_db
+
+# GEÄNDERT: PostgreSQL statt SQLite
+from .database.postgres_connection import init_database
 from .routes.dokumente import router as dokumente_router
 from .services.ocr_scheduler import ocr_scheduler
 
@@ -31,13 +33,21 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Anwendung wird gestartet...")
     
-    # Datenbank initialisieren
-    init_db()
-    logger.info("Datenbank initialisiert")
+    # GEÄNDERT: PostgreSQL-Datenbank initialisieren
+    try:
+        init_database()
+        logger.info("PostgreSQL-Datenbank initialisiert")
+    except Exception as e:
+        logger.error(f"Fehler bei Datenbank-Initialisierung: {e}")
+        # Trotzdem weitermachen für Development
+        logger.warning("Starte ohne Datenbank-Verbindung (nur für Development!)")
     
     # OCR-Scheduler starten
-    await ocr_scheduler.start()
-    logger.info("OCR-Scheduler gestartet")
+    try:
+        await ocr_scheduler.start()
+        logger.info("OCR-Scheduler gestartet")
+    except Exception as e:
+        logger.error(f"Fehler beim Starten des OCR-Schedulers: {e}")
     
     logger.info("Anwendung ist bereit")
     
@@ -45,15 +55,18 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Anwendung wird heruntergefahren...")
-    await ocr_scheduler.stop()
-    logger.info("OCR-Scheduler gestoppt")
+    try:
+        await ocr_scheduler.stop()
+        logger.info("OCR-Scheduler gestoppt")
+    except Exception as e:
+        logger.error(f"Fehler beim Stoppen des OCR-Schedulers: {e}")
 
 
 # FastAPI-App erstellen
 app = FastAPI(
     title="OCR-Dokumentenverwaltungssystem",
     description="API für das OCR-basierte Dokumentenverwaltungssystem",
-    version="0.1.0",
+    version="0.2.0",  # Version erhöht für PostgreSQL
     lifespan=lifespan
 )
 
@@ -82,7 +95,8 @@ async def root():
     """Basisroute für die API."""
     return {
         "message": "OCR-Dokumentenverwaltungssystem API",
-        "version": "0.1.0",
+        "version": "0.2.0",
+        "database": "PostgreSQL",
         "docs": "/docs",
         "ocr_scheduler": {
             "running": ocr_scheduler.running,
@@ -103,4 +117,4 @@ async def force_ocr_check():
 
 # Für die direkte Ausführung
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)

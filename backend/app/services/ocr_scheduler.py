@@ -1,6 +1,6 @@
 """
 Background-Service für periodische OCR-Verarbeitung neuer PDF-Dateien.
-Erweitert um Document Processing System für Wareneingang-Dokumente.
+Aktualisiert für PostgreSQL-Repository-Pattern.
 """
 
 import asyncio
@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Set
 
 from ..config.settings import PDF_INPUT_DIR
-from ..models.dokument import Dokument
+
+# GEÄNDERT: Verwende Repository statt alte Models
+from ..repositories.dokument_repository import DokumentRepository
 from ..services.ocr_service import OCRService
 
 logger = logging.getLogger(__name__)
@@ -129,7 +131,7 @@ class OCRScheduler:
                 if filename.lower().endswith('.pdf'):
                     file_path = os.path.join(PDF_INPUT_DIR, filename)
                     
-                    # Prüfen ob in DB vorhanden
+                    # Prüfen ob in DB vorhanden (mit neuem Repository)
                     in_database = self._is_file_in_database(filename)
                     
                     # OCR-Status prüfen
@@ -160,11 +162,10 @@ class OCRScheduler:
             logger.error(f"Fehler beim Prüfen der Dateien: {e}")
     
     def _is_file_in_database(self, filename: str) -> bool:
-        """Prüft ob Datei bereits in Datenbank ist."""
+        """Prüft ob Datei bereits in Datenbank ist (mit neuem Repository)."""
         try:
-            from ..models.dokument import Dokument
-            dokumente = Dokument.get_all()
-            return any(d.dateiname == filename for d in dokumente)
+            dokument = DokumentRepository.get_by_filename(filename)
+            return dokument is not None
         except Exception as e:
             logger.error(f"Fehler beim DB-Check: {e}")
             return False
@@ -205,7 +206,7 @@ class OCRScheduler:
             except Exception as e:
                 logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen: {e}")
             
-            # 3. DB-Eintrag falls nötig
+            # 3. DB-Eintrag falls nötig (mit neuem Repository)
             if not self._is_file_in_database(filename):
                 logger.info(f"📋 Füge zur DB hinzu: {filename}")
                 await self._add_to_database(filename, file_path)
@@ -376,19 +377,19 @@ class OCRScheduler:
             return False
     
     async def _add_to_database(self, filename: str, file_path: str):
-        """Fügt neue Datei zur Datenbank hinzu falls noch nicht vorhanden."""
+        """Fügt neue Datei zur Datenbank hinzu falls noch nicht vorhanden (mit neuem Repository)."""
         try:
             # Prüfen ob bereits in DB
-            vorhandene = [d for d in Dokument.get_all() if d.dateiname == filename]
+            existing_dokument = DokumentRepository.get_by_filename(filename)
             
-            if not vorhandene:
+            if not existing_dokument:
                 # Vorschau-Text extrahieren
                 preview_text = await asyncio.to_thread(
                     OCRService.extract_preview_text, file_path, 300
                 )
                 
-                # In DB speichern
-                Dokument.create(
+                # In DB speichern (mit neuem Repository)
+                DokumentRepository.create(
                     dateiname=filename,
                     pfad=file_path,
                     inhalt_vorschau=preview_text

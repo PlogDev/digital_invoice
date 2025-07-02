@@ -1,5 +1,6 @@
 """
-API-Routen für die Dokumentenverwaltung mit OCR-Integration beim Scannen.
+API-Routen für die Dokumentenverwaltung mit PostgreSQL-Repository-Pattern.
+Aktualisiert von SQLite auf PostgreSQL mit neuer Kategorien-Struktur.
 """
 
 import logging
@@ -11,8 +12,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Path, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
-from ..config.settings import PDF_CATEGORIES, PDF_INPUT_DIR
-from ..models.dokument import Dokument, MetadatenFeld
+from ..config.settings import PDF_INPUT_DIR
+from ..database.seed_data import get_unterkategorie_by_name
+from ..repositories.dokument_repository import DokumentRepository
 from ..schemas.dokument import (
     DokumentList,
     DokumentResponse,
@@ -26,23 +28,40 @@ from ..schemas.dokument import (
 from ..services.ocr_service import OCRService
 from ..services.storage_service import StorageService
 
-# Logger einrichten
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/dokumente", tags=["Dokumente"])
 
 
 @router.get("/", response_model=DokumentList)
 async def get_dokumente():
     """
-    Ruft alle Dokumente ab. OCR wird automatisch im Background verarbeitet.
+    Ruft alle Dokumente ab und scannt nach neuen Dateien im Eingangsverzeichnis.
+    OCR wird automatisch beim Scannen neuer Dateien durchgeführt.
     """
-    # Einfach alle Dokumente aus der DB abrufen
-    # OCR läuft im Background-Scheduler
-    dokumente = Dokument.get_all()
+    
+    # Neue PDF-Dateien prüfen und mit OCR verarbeiten
+    neue_dateien = StorageService.get_input_files()  # OCR wird hier automatisch durchgeführt
+    
+    for datei in neue_dateien:
+        # Prüfen, ob Datei bereits in DB (mit neuem Repository)
+        vorhandenes_dokument = DokumentRepository.get_by_filename(datei["dateiname"])
+        
+        if not vorhandenes_dokument:
+            # Bessere Vorschau aus OCR-verarbeiteter PDF erstellen
+            vorschau = OCRService.extract_preview_text(datei["pfad"], max_chars=300)
+            
+            # In DB speichern (mit neuem Repository)
+            DokumentRepository.create(
+                dateiname=datei["dateiname"],
+                pfad=datei["pfad"],
+                inhalt_vorschau=vorschau
+            )
+    
+    # Alle Dokumente abrufen (Repository gibt schon Dictionaries zurück)
+    dokumente = DokumentRepository.get_all()
     
     return {
-        "dokumente": [d.to_dict() for d in dokumente],
+        "dokumente": dokumente,
         "total": len(dokumente)
     }
 
@@ -50,18 +69,19 @@ async def get_dokumente():
 @router.get("/{dokument_id}", response_model=DokumentResponse)
 async def get_dokument(dokument_id: int = Path(..., description="Die ID des Dokuments")):
     """Ruft ein einzelnes Dokument anhand seiner ID ab."""
-    dokument = Dokument.get_by_id(dokument_id)
+    dokument = DokumentRepository.get_by_id(dokument_id)
     
     if not dokument:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
     
-    return dokument.to_dict()
+    # Konvertiere zu Dictionary für API-Response
+    return DokumentRepository.to_dict(dokument)
 
 
 @router.get("/file/{dokument_id}")
 async def get_dokument_file(dokument_id: int):
     """Liefert die PDF-Datei eines Dokuments (bereits OCR-verarbeitet)."""
-    dokument = Dokument.get_by_id(dokument_id)
+    dokument = DokumentRepository.get_by_id(dokument_id)
     
     if not dokument:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
@@ -84,7 +104,7 @@ async def get_dokument_file(dokument_id: int):
 @router.post("/upload", response_model=DokumentResponse)
 async def upload_dokument(file: UploadFile = File(...)):
     """
-    Lädt ein neues PDF-Dokument hoch. OCR wird automatisch im Background verarbeitet.
+    Lädt ein neues PDF-Dokument hoch und führt sofort OCR durch.
     """
     if not file.filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Nur PDF-Dateien werden unterstützt")
@@ -97,25 +117,35 @@ async def upload_dokument(file: UploadFile = File(...)):
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
         
-        logger.info(f"Datei hochgeladen: {file.filename} - OCR wird im Background verarbeitet")
+        # Sofort OCR durchführen
+        success = StorageService._process_pdf_with_ocr_inplace(file_path)
+        
+        if not success:
+            # Fallback: Datei bleibt, aber ohne OCR
+            logger.warning(f"OCR fehlgeschlagen für hochgeladene Datei: {file.filename}")
+        
+        # OCR-Marker erstellen
+        ocr_marker_path = file_path + '.ocr_processed'
+        with open(ocr_marker_path, 'w') as marker:
+            marker.write(f"OCR processed at upload: {os.path.getmtime(file_path)}")
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Datei: {str(e)}")
     
-    # Einfache Vorschau ohne OCR (wird später vom Scheduler aktualisiert)
-    try:
-        basic_preview = OCRService.extract_preview_text(file_path, max_chars=100)
-    except:
-        basic_preview = f"Hochgeladen: {file.filename} - OCR wird verarbeitet..."
+    # Vorschau-Text aus OCR-verarbeiteter PDF erstellen
+    vorschau = OCRService.extract_preview_text(file_path, max_chars=300)
     
-    # In DB speichern
-    dokument = Dokument.create(
+    # In DB speichern (mit neuem Repository)
+    dokument_dict = DokumentRepository.create(
         dateiname=file.filename,
         pfad=file_path,
-        inhalt_vorschau=basic_preview
+        inhalt_vorschau=vorschau
     )
     
-    return dokument.to_dict()
+    if not dokument_dict:
+        raise HTTPException(status_code=500, detail="Fehler beim Speichern in der Datenbank")
+    
+    return dokument_dict
 
 
 @router.put("/{dokument_id}/kategorisieren", response_model=DokumentResponse)
@@ -125,47 +155,72 @@ async def kategorisiere_dokument(
 ):
     """
     Kategorisiert ein Dokument und verschiebt es (ohne weitere OCR-Verarbeitung).
+    Verwendet jetzt die neue Kategorien-Struktur mit Haupt- und Unterkategorien.
     """
-    dokument = Dokument.get_by_id(dokument_id)
+    dokument = DokumentRepository.get_by_id(dokument_id)
     
     if not dokument:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
     
-    if update_data.kategorie and update_data.kategorie not in PDF_CATEGORIES:
-        raise HTTPException(status_code=400, detail=f"Ungültige Kategorie: {update_data.kategorie}")
+    # Kategorie-Mapping von alten Namen auf neue Struktur
+    kategorie_mapping = {
+        "berta": ("Rechnungen", "Berta-Rechnung"),
+        "kosten": ("Rechnungen", "Kostenrechnung"),
+        "irrlaeufer": ("Rechnungen", "Irrläufer"),
+        # Neue Kategorien direkt unterstützen
+        "Lieferschein_extern": ("Lieferscheine", "Lieferschein_extern"),
+        "Lieferschein_intern": ("Lieferscheine", "Lieferschein_intern"),
+    }
     
-    # Wenn Kategorie geändert wird, PDF verschieben (OCR bereits durchgeführt)
-    if update_data.kategorie and update_data.kategorie != dokument.kategorie:
-        success, neuer_pfad = StorageService.move_file_only(
-            dokument.pfad, 
-            update_data.kategorie
+    if update_data.kategorie:
+        # Mapping auflösen
+        if update_data.kategorie in kategorie_mapping:
+            kategorie_name, unterkategorie_name = kategorie_mapping[update_data.kategorie]
+        else:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Ungültige Kategorie: {update_data.kategorie}. "
+                       f"Verfügbar: {list(kategorie_mapping.keys())}"
+            )
+        
+        # Unterkategorie-ID ermitteln
+        unterkategorie_id = get_unterkategorie_by_name(kategorie_name, unterkategorie_name)
+        if not unterkategorie_id:
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Unterkategorie {kategorie_name}/{unterkategorie_name} nicht gefunden"
+            )
+        
+        # Kategorie in Repository aktualisieren
+        updated_dokument = DokumentRepository.update_kategorie(
+            dokument_id, 
+            kategorie_name, 
+            unterkategorie_name
         )
         
-        if not success:
-            raise HTTPException(status_code=500, detail="Fehler beim Verschieben der Datei")
+        if not updated_dokument:
+            raise HTTPException(status_code=500, detail="Fehler beim Kategorisieren")
         
-        dokument.kategorie = update_data.kategorie
-        dokument.pfad = neuer_pfad
+        # Datei verschieben (falls Kategorie geändert wurde)
+        # TODO: Storage-Service für neue Struktur anpassen
+        # Erstmal nur DB-Update
+        logger.info(f"Dokument {dokument_id} kategorisiert als {kategorie_name}/{unterkategorie_name}")
         
-        # Vorschau aus der bereits OCR-verarbeiteten PDF kann aktualisiert werden
-        aktualisierte_vorschau = OCRService.extract_preview_text(neuer_pfad, max_chars=300)
-        if aktualisierte_vorschau:
-            dokument.inhalt_vorschau = aktualisierte_vorschau
+        dokument = updated_dokument
     
     # Metadaten aktualisieren, falls vorhanden
     if update_data.metadaten:
-        dokument.metadaten = update_data.metadaten
+        updated_dokument = DokumentRepository.update_metadaten(dokument_id, update_data.metadaten)
+        if updated_dokument:
+            dokument = updated_dokument
     
-    # DB aktualisieren
-    dokument.update()
-    
-    return dokument.to_dict()
+    return dokument
 
 
 @router.delete("/{dokument_id}", response_model=SuccessResponse)
 async def delete_dokument(dokument_id: int = Path(..., description="Die ID des Dokuments")):
     """Löscht ein Dokument aus der Datenbank und die Datei."""
-    dokument = Dokument.get_by_id(dokument_id)
+    dokument = DokumentRepository.get_by_id(dokument_id)
     
     if not dokument:
         raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
@@ -173,8 +228,8 @@ async def delete_dokument(dokument_id: int = Path(..., description="Die ID des D
     # Datei und OCR-Marker löschen
     StorageService.delete_file(dokument.pfad)
     
-    # Aus DB löschen
-    success = dokument.delete()
+    # Aus DB löschen (mit neuem Repository)
+    success = DokumentRepository.delete(dokument_id)
     
     if not success:
         raise HTTPException(status_code=500, detail="Fehler beim Löschen des Dokuments")
@@ -186,40 +241,87 @@ async def delete_dokument(dokument_id: int = Path(..., description="Die ID des D
     }
 
 
-# Metadatenfelder-Routen (unverändert)
+# Metadatenfelder-Routen (erstmal unverändert, später auch auf Repository umstellen)
 @router.get("/metadaten/felder", response_model=MetadatenFeldList)
 async def get_metadatenfelder():
     """Ruft alle verfügbaren Metadatenfelder ab."""
-    felder = MetadatenFeld.get_all()
+    # TODO: Auch auf Repository-Pattern umstellen
+    from ..database.postgres_connection import get_db_session
+    from ..models.database import MetadatenFeld
     
-    return {"felder": felder}
+    try:
+        with get_db_session() as session:
+            felder = session.query(MetadatenFeld).order_by(MetadatenFeld.feldname).all()
+            
+            felder_dict = []
+            for feld in felder:
+                felder_dict.append({
+                    "id": feld.id,
+                    "feldname": feld.feldname,
+                    "beschreibung": feld.beschreibung,
+                    "erstellt_am": feld.erstellt_am.isoformat() if feld.erstellt_am else None
+                })
+            
+            return {"felder": felder_dict}
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Metadatenfelder: {e}")
+        raise HTTPException(status_code=500, detail="Fehler beim Laden der Metadatenfelder")
 
 
 @router.post("/metadaten/felder", response_model=SuccessResponse)
 async def create_metadatenfeld(feld: MetadatenFeldCreate):
     """Erstellt ein neues Metadatenfeld."""
-    success = MetadatenFeld.create(feld.feldname, feld.beschreibung)
+    # TODO: Auch auf Repository-Pattern umstellen
+    from sqlalchemy.exc import IntegrityError
+
+    from ..database.postgres_connection import get_db_session
+    from ..models.database import MetadatenFeld
     
-    if not success:
+    try:
+        with get_db_session() as session:
+            neues_feld = MetadatenFeld(
+                feldname=feld.feldname,
+                beschreibung=feld.beschreibung
+            )
+            session.add(neues_feld)
+            # Commit erfolgt automatisch durch get_db_session()
+            
+            return {
+                "success": True,
+                "message": f"Metadatenfeld '{feld.feldname}' wurde erstellt",
+                "data": {"feldname": feld.feldname}
+            }
+    except IntegrityError:
         raise HTTPException(status_code=400, detail=f"Feld '{feld.feldname}' existiert bereits")
-    
-    return {
-        "success": True,
-        "message": f"Metadatenfeld '{feld.feldname}' wurde erstellt",
-        "data": {"feldname": feld.feldname}
-    }
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Metadatenfelds: {e}")
+        raise HTTPException(status_code=500, detail="Fehler beim Erstellen des Metadatenfelds")
 
 
 @router.delete("/metadaten/felder/{feld_id}", response_model=SuccessResponse)
 async def delete_metadatenfeld(feld_id: int = Path(..., description="Die ID des Metadatenfelds")):
     """Löscht ein Metadatenfeld."""
-    success = MetadatenFeld.delete(feld_id)
+    # TODO: Auch auf Repository-Pattern umstellen
+    from ..database.postgres_connection import get_db_session
+    from ..models.database import MetadatenFeld
     
-    if not success:
-        raise HTTPException(status_code=404, detail="Metadatenfeld nicht gefunden")
-    
-    return {
-        "success": True,
-        "message": "Metadatenfeld wurde gelöscht",
-        "data": {"id": feld_id}
-    }
+    try:
+        with get_db_session() as session:
+            feld = session.query(MetadatenFeld).filter(MetadatenFeld.id == feld_id).first()
+            
+            if not feld:
+                raise HTTPException(status_code=404, detail="Metadatenfeld nicht gefunden")
+            
+            session.delete(feld)
+            # Commit erfolgt automatisch durch get_db_session()
+            
+            return {
+                "success": True,
+                "message": "Metadatenfeld wurde gelöscht",
+                "data": {"id": feld_id}
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Löschen des Metadatenfelds: {e}")
+        raise HTTPException(status_code=500, detail="Fehler beim Löschen des Metadatenfelds")
