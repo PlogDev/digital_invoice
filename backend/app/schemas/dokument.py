@@ -1,5 +1,6 @@
 """
 Pydantic-Schemas für API-Anfragen und -Antworten.
+Aktualisiert für PostgreSQL mit Unterkategorien.
 """
 
 from datetime import datetime
@@ -28,6 +29,7 @@ class DokumentResponse(DokumentBase):
     """Schema für die Dokumentantwort."""
     id: int
     kategorie: Optional[str] = None
+    unterkategorie: Optional[str] = None  # NEU: Unterkategorie hinzugefügt!
     pfad: str
     inhalt_vorschau: Optional[str] = None
     erstellt_am: str
@@ -35,7 +37,7 @@ class DokumentResponse(DokumentBase):
     
     class Config:
         """Pydantic-Konfiguration."""
-        orm_mode = True
+        from_attributes = True  # Aktualisiert für Pydantic V2 (war: orm_mode = True)
 
 
 class DokumentList(BaseModel):
