@@ -7,18 +7,17 @@ WORKDIR /app
 # Package.json und package-lock.json kopieren (für besseres Caching)
 COPY package*.json ./
 
-# Dependencies installieren
-RUN npm ci --only=production
+# Dependencies installieren (alle, nicht nur production - wegen Vite)
+RUN npm ci
 
 # App-Code kopieren
 COPY . .
 
-# Vite dev server konfigurieren
-# Alle Interfaces binden (nicht nur localhost)
+# Port freigeben
 EXPOSE 3000
 
-# Environment Variables
-ENV VITE_API_BASE_URL=http://localhost:8080/api
+# Environment Variables (korrigierte Backend-URL)
+ENV VITE_API_BASE_URL=http://localhost:8081/api
 
 # Development Server starten
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

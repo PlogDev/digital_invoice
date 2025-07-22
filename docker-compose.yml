@@ -9,9 +9,9 @@ services:
       POSTGRES_DB: ocr_docs
       POSTGRES_USER: ocr_user
       POSTGRES_PASSWORD: ocr_secure_2024
-      POSTGRES_HOST_AUTH_METHOD: trust  # Für Development einfacher
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"  # Localhost:5432 -> Container:5432
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -22,18 +22,18 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Backend API
+  # Backend API (KORRIGIERT: Port 8081)
   backend:
     build: 
       context: ./backend
       dockerfile: Dockerfile
     container_name: ocr_backend
     ports:
-      - "8080:8080"  # Port 8080 statt 8000 (wegen Paperless NGX)
+      - "8081:8081"  # Korrigiert von 8080 auf 8081
     environment:
       - DATABASE_URL=postgresql://ocr_user:ocr_secure_2024@postgres:5432/ocr_docs
       - PYTHONPATH=/app
-      - PORT=8080
+      - PORT=8081  # Korrigiert
     volumes:
       - ./backend:/app
       - ./backend/pdfs:/app/pdfs
@@ -41,9 +41,7 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    # Für Development: Backend-Service erstmal deaktiviert
-    profiles:
-      - production
+    # ENTFERNT: profiles -> startet jetzt standardmäßig
 
   # Frontend (React/Vite)
   frontend:
@@ -54,16 +52,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8080/api
+      - VITE_API_BASE_URL=http://localhost:8081/api  # Korrigierte URL
     volumes:
       - ./frontend:/app
-      - /app/node_modules  # Anonymous volume für node_modules
+      - /app/node_modules
     depends_on:
       - backend
     restart: unless-stopped
-    # Für Development: Frontend-Service erstmal deaktiviert  
-    profiles:
-      - production
+    # ENTFERNT: profiles -> startet jetzt standardmäßig
 
 volumes:
   postgres_data:

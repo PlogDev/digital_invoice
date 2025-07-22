@@ -1,5 +1,5 @@
-# Python 3.10 als Basis
-FROM python:3.10-slim
+# Python 3.11
+FROM python:3.11-slim
 
 # System-Updates und OCR-Dependencies installieren
 RUN apt-get update && apt-get install -y \
@@ -33,13 +33,14 @@ COPY . .
 
 # Tesseract-Pfad für pytesseract setzen
 ENV TESSERACT_CMD=/usr/bin/tesseract
+ENV PYTHONPATH=/app
 
-# Port freigeben
-EXPOSE 8080
+# Port freigeben (8081 statt 8080)
+EXPOSE 8081
 
-# Health-Check
+# Health-Check (korrigierter Port)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD curl -f http://localhost:8081/ || exit 1
 
-# Startup-Command mit Port 8080
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+# Startup-Command mit Port 8081 (wie in settings.py)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081", "--reload"]
