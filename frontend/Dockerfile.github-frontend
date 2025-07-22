@@ -1,0 +1,24 @@
+# Frontend Dockerfile für GitHub-Repository
+FROM node:18-alpine
+
+# Git installieren
+RUN apk add --no-cache git
+
+# Repository klonen
+RUN git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo
+
+# Arbeitsverzeichnis und Code kopieren
+WORKDIR /app
+RUN cp -r /tmp/repo/frontend/* /app/ && rm -rf /tmp/repo
+
+# Dependencies installieren
+RUN npm ci
+
+# Port freigeben
+EXPOSE 3000
+
+# Environment für Backend-Verbindung
+ENV VITE_API_BASE_URL=http://localhost:8081/api
+
+# Development Server starten
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3000"]

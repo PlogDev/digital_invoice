@@ -1,0 +1,46 @@
+# Backend Dockerfile für GitHub-Repository
+FROM python:3.11-slim
+
+# System-Updates und Dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    tesseract-ocr \
+    tesseract-ocr-deu \
+    poppler-utils \
+    ghostscript \
+    unpaper \
+    qpdf \
+    liblept5 \
+    libtesseract5 \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Repository klonen
+RUN git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo
+
+# Arbeitsverzeichnis und Code kopieren
+WORKDIR /app
+RUN cp -r /tmp/repo/backend/* /app/ && rm -rf /tmp/repo
+
+# Python Dependencies installieren
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# PDF-Verzeichnisse erstellen
+RUN mkdir -p /app/pdfs/input /app/pdfs/processed /app/pdfs/csv_lists
+
+# Environment Variables
+ENV TESSERACT_CMD=/usr/bin/tesseract
+ENV PYTHONPATH=/app
+
+# Port freigeben
+EXPOSE 8081
+
+# Health Check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8081/ || exit 1
+
+# Startup mit DB-Initialisierung (JSON-Format für bessere Signal-Behandlung)
+CMD ["bash", "-c", "sleep 15 && python -c 'from app.database.postgres_connection import init_database; init_database()' || echo 'DB init failed' && uvicorn app.main:app --host 0.0.0.0 --port 8081"]
