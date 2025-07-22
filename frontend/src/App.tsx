@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Route, Routes, Link, useLocation } from 'react
 import { Dokument } from './types';
 import DocumentList from './components/DocumentList';
 import DocumentViewer from './components/DocumentViewer';
+import DatabaseViewer from './components/DatabaseViewer/DatabaseViewer'; // NEU: DatabaseViewer
 import {
   FileText,
   Menu,
@@ -10,7 +11,8 @@ import {
   Archive,
   Upload,
   Settings,
-  Search
+  Search,
+  Database  // NEU: Database Icon
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -22,6 +24,7 @@ const navigation = [
   { name: 'Archiv', href: '/archiv', icon: Archive },
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Suche', href: '/suche', icon: Search },
+  { name: 'Datenbank', href: '/database', icon: Database }, // NEU: Database-Menüpunkt
   { name: 'Einstellungen', href: '/einstellungen', icon: Settings },
 ];
 
@@ -130,6 +133,11 @@ function App() {
             <SearchContent />
           </Layout>
         } />
+        <Route path="/database" element={
+          <Layout>
+            <DatabaseViewer />
+          </Layout>
+        } /> {/* NEU: Database-Route */}
         <Route path="/einstellungen" element={
           <Layout>
             <SettingsContent />

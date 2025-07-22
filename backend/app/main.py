@@ -12,6 +12,7 @@ from .config.settings import API_PREFIX, CORS_ORIGINS
 
 # GEÄNDERT: PostgreSQL statt SQLite
 from .database.postgres_connection import init_database
+from .routes.database import router as database_router  # NEU: Database-Routes
 from .routes.dokumente import router as dokumente_router
 from .services.ocr_scheduler import ocr_scheduler
 
@@ -88,6 +89,7 @@ app.mount("/pdfs", StaticFiles(directory=str(PDF_DIR)), name="pdfs")
 
 # Routen registrieren
 app.include_router(dokumente_router, prefix=API_PREFIX)
+app.include_router(database_router, prefix=API_PREFIX)  # NEU: Database-Routes
 
 
 @app.get("/")
@@ -98,6 +100,7 @@ async def root():
         "version": "0.2.0",
         "database": "PostgreSQL",
         "docs": "/docs",
+        "database_viewer": "/api/database/stats",  # NEU: Database Viewer Hinweis
         "ocr_scheduler": {
             "running": ocr_scheduler.running,
             "processed_files": len(ocr_scheduler.processed_files)

@@ -340,3 +340,130 @@ async def delete_metadatenfeld(feld_id: int = Path(..., description="Die ID des 
     except Exception as e:
         logger.error(f"Fehler beim Löschen des Metadatenfelds: {e}")
         raise HTTPException(status_code=500, detail="Fehler beim Löschen des Metadatenfelds")
+    
+    """
+NEU: CSV-Reimport Route für dokumente.py
+Füge diese Route zu backend/app/routes/dokumente.py hinzu
+"""
+
+@router.post("/{dokument_id}/csv-reimport", response_model=SuccessResponse)
+async def csv_reimport_wareneingang(dokument_id: int = Path(..., description="Die ID des Dokuments")):
+    """
+    Führt einen CSV-Reimport für ein Wareneingangs-Dokument durch.
+    Löscht vorhandene Chargen-Datensätze und importiert sie neu aus den CSV-Dateien.
+    """
+    try:
+        # 1. Dokument-Dictionary statt ORM-Objekt verwenden (vermeidet Session-Probleme)
+        dokument_dict = None
+        all_dokumente = DokumentRepository.get_all()
+        
+        for dok in all_dokumente:
+            if dok["id"] == dokument_id:
+                dokument_dict = dok
+                break
+        
+        if not dokument_dict:
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+        
+        # 2. Prüfen ob es ein Wareneingangs-Dokument ist (mit Dictionary)
+        is_wareneingang = (
+            dokument_dict.get("unterkategorie") == "Lieferschein_extern" or 
+            dokument_dict.get("kategorie") == "berta"  # Legacy
+        )
+        
+        if not is_wareneingang:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"CSV-Reimport nur für Wareneingangs-Dokumente möglich. "
+                       f"Aktuell: kategorie='{dokument_dict.get('kategorie')}', "
+                       f"unterkategorie='{dokument_dict.get('unterkategorie')}'"
+            )
+        
+        # 3. Zugehörigen externen Lieferschein finden
+        from ..repositories.lieferschein_repository import (
+            ChargenEinkaufRepository,
+            LieferscheinExternRepository,
+        )
+        
+        lieferscheine = LieferscheinExternRepository.get_all()
+        lieferschein = None
+        for ls in lieferscheine:
+            if ls.dokument_id == dokument_id:
+                lieferschein = ls
+                break
+        
+        if not lieferschein:
+            raise HTTPException(
+                status_code=404, 
+                detail="Kein externer Lieferschein für dieses Dokument gefunden. "
+                       "Möglicherweise wurde das Dokument noch nicht als Wareneingang verarbeitet."
+            )
+        
+        # 4. Lieferscheinnummer validieren
+        if not lieferschein.lieferscheinnummer:
+            raise HTTPException(
+                status_code=400, 
+                detail="Lieferscheinnummer nicht verfügbar"
+            )
+        
+        # 5. Vorhandene Chargen-Datensätze löschen (in neuer Session)
+        from ..database.postgres_connection import get_db_session
+        from ..models.database import ChargenEinkauf
+        
+        deleted_count = 0
+        with get_db_session() as session:
+            existing_chargen = session.query(ChargenEinkauf)\
+                .filter(ChargenEinkauf.lieferschein_extern_id == lieferschein.id)\
+                .all()
+            
+            for charge in existing_chargen:
+                session.delete(charge)
+                deleted_count += 1
+        
+        logger.info(f"🗑️  {deleted_count} vorhandene Chargen-Datensätze für Lieferschein {lieferschein.lieferscheinnummer} gelöscht")
+        
+        # 6. CSV-Reimport durchführen
+        from ..services.document_processing.wareneingang_processor import (
+            WareneingangProcessor,
+        )
+        
+        processor = WareneingangProcessor()
+        
+        # CSV-Cache leeren für frische Daten
+        processor.clear_cache()
+        
+        # CSV-Import durchführen
+        import_count = await processor._import_csv_data(lieferschein, lieferschein.lieferscheinnummer)
+        
+        # 7. Lieferschein als importiert markieren
+        if import_count > 0:
+            LieferscheinExternRepository.mark_csv_imported(lieferschein.id)
+        
+        # 8. Erfolgsantwort
+        success_message = (
+            f"CSV-Reimport abgeschlossen für Lieferschein '{lieferschein.lieferscheinnummer}': "
+            f"{deleted_count} alte Datensätze gelöscht, {import_count} neue importiert"
+        )
+        
+        logger.info(f"✅ {success_message}")
+        
+        return {
+            "success": True,
+            "message": success_message,
+            "data": {
+                "dokument_id": dokument_id,
+                "dokument_name": dokument_dict["dateiname"],
+                "lieferscheinnummer": lieferschein.lieferscheinnummer,
+                "deleted_count": deleted_count,
+                "imported_count": import_count
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim CSV-Reimport für Dokument {dokument_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Interner Fehler beim CSV-Reimport: {str(e)}"
+        )

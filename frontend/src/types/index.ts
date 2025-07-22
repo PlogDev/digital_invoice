@@ -7,6 +7,7 @@ export interface Dokument {
   id: number;
   dateiname: string;
   kategorie?: string;
+  unterkategorie?: string; // NEU: Unterkategorie hinzugefügt
   pfad: string;
   inhalt_vorschau?: string;
   erstellt_am: string;
@@ -50,9 +51,28 @@ export interface KategorieOption {
   label: string;
 }
 
-// Definierte Kategorien
+// Unterkategorie-Optionen
+export interface UnterkategorieOption {
+  value: string;
+  label: string;
+}
+
+// Definierte Kategorien (Legacy)
 export const KATEGORIEN: KategorieOption[] = [
   { value: 'berta', label: 'Berta-Rechnung' },
   { value: 'kosten', label: 'Kostenrechnung' },
   { value: 'irrlaeufer', label: 'Irrläufer' }
+];
+
+// Neue Unterkategorien (basierend auf PostgreSQL-Struktur)
+export const UNTERKATEGORIEN: UnterkategorieOption[] = [
+  { value: 'Berta-Rechnung', label: 'Berta-Rechnung' },
+  { value: 'Kostenrechnung', label: 'Kostenrechnung' },
+  { value: 'Irrläufer', label: 'Irrläufer' },
+  { value: 'Lieferschein_extern', label: 'Externe Lieferscheine (Wareneingang)' },
+  { value: 'Lieferschein_intern', label: 'Interne Lieferscheine' },
+  { value: 'Ursprungszeugnis', label: 'Ursprungszeugnisse' },
+  { value: 'EUR1', label: 'EUR.1 Präferenznachweis' },
+  { value: 'ATR', label: 'ATR-Dokumente' },
+  { value: 'Ausfuhrbegleitdokument', label: 'Ausfuhrbegleitdokumente' }
 ];

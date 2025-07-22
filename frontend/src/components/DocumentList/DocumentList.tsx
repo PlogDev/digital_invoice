@@ -85,6 +85,52 @@ const DocumentList: React.FC<DocumentListProps> = ({ onSelectDocument, refreshTr
     }
   };
 
+  // NEU: CSV-Reimport Handler
+  const handleCsvReimport = async (documentId: number): Promise<void> => {
+    const document = documents.find(d => d.id === documentId);
+    if (!document) return;
+    
+    const confirmed = window.confirm(
+      `CSV-Daten für "${document.dateiname}" neu importieren?\n\n` +
+      `Alle vorhandenen Chargen-Datensätze werden gelöscht und neu aus den CSV-Dateien geladen.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(
+        `http://localhost:8081/api/dokumente/${documentId}/csv-reimport`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.detail || 'Fehler beim CSV-Reimport');
+      }
+      
+      // Erfolgsmeldung (grüne Benachrichtigung)
+      setError(`✅ CSV-Reimport erfolgreich: ${result.data.deleted_count} alte Datensätze gelöscht, ${result.data.imported_count} neue importiert`);
+      
+      // Nach 4 Sekunden Erfolgsmeldung ausblenden
+      setTimeout(() => setError(null), 4000);
+      
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      setError(`❌ CSV-Reimport fehlgeschlagen: ${errorMsg}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Dokument auswählen (für Detailansicht)
   const handleSelect = (document: Dokument): void => {
     if (onSelectDocument) {
@@ -133,7 +179,11 @@ const DocumentList: React.FC<DocumentListProps> = ({ onSelectDocument, refreshTr
       </div>
       
       {error && (
-        <div className="bg-destructive/10 text-destructive p-3 rounded mb-4">
+        <div className={`p-3 rounded mb-4 ${
+          error.startsWith('✅') 
+            ? 'bg-green-100 text-green-800' 
+            : 'bg-destructive/10 text-destructive'
+        }`}>
           {error}
         </div>
       )}
@@ -160,6 +210,7 @@ const DocumentList: React.FC<DocumentListProps> = ({ onSelectDocument, refreshTr
             onToggleExpand={() => toggleExpand(document.id)}
             onSelect={() => handleSelect(document)}
             onDelete={() => handleDelete(document.id)}
+            onCsvReimport={handleCsvReimport} // NEU: CSV-Reimport Callback
           />
         ))}
       </ul>

@@ -25,6 +25,9 @@ const DatabaseViewer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // KORRIGIERT: API-URL auf Port 8081
+  const API_BASE_URL = 'http://localhost:8081/api';
+
   const availableTables = {
     dokumente: 'Dokumente',
     kategorien: 'Kategorien',
@@ -44,7 +47,7 @@ const DatabaseViewer: React.FC = () => {
   const loadStats = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8081/api/database/stats');
+      const response = await fetch(`${API_BASE_URL}/database/stats`);
       if (!response.ok) throw new Error('Fehler beim Laden der Statistiken');
       
       const data = await response.json();
@@ -61,7 +64,7 @@ const DatabaseViewer: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`http://localhost:8081/api/database/tables/${tableName}`);
+      const response = await fetch(`${API_BASE_URL}/database/tables/${tableName}`);
       if (!response.ok) throw new Error(`Fehler beim Laden der Tabelle: ${response.statusText}`);
       
       const data = await response.json();
@@ -142,12 +145,12 @@ const DatabaseViewer: React.FC = () => {
             <Database className="mr-2" />
             Datenbankansicht
           </h1>
-          <p className="text-gray-600">Überblick über alle Datenbanktabellen</p>
+          <p className="text-gray-600">Überblick über alle PostgreSQL-Tabellen</p>
         </div>
         <button
           onClick={loadStats}
           disabled={loading}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          className="flex items-center px-4 py-2 bg-[#004f7c] text-white rounded-lg hover:bg-[#004f7c]/90 disabled:opacity-50"
         >
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           Aktualisieren
@@ -209,7 +212,7 @@ const DatabaseViewer: React.FC = () => {
               onClick={() => handleTableSelect(key)}
               className={`p-3 text-left rounded-lg border transition-colors ${
                 selectedTable === key
-                  ? 'bg-blue-50 border-blue-200 text-blue-800'
+                  ? 'bg-[#004f7c]/10 border-[#004f7c]/20 text-[#004f7c]'
                   : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
               }`}
             >
@@ -228,13 +231,16 @@ const DatabaseViewer: React.FC = () => {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="text-red-800">{error}</div>
+          <div className="text-sm text-red-600 mt-2">
+            Prüfe ob das Backend auf Port 8081 läuft und die Database-Routes verfügbar sind.
+          </div>
         </div>
       )}
 
       {/* Lade-Anzeige */}
       {loading && (
         <div className="flex justify-center p-8">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#004f7c]"></div>
         </div>
       )}
 

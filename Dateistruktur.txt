@@ -1,4 +1,4 @@
-Auflistung der Ordnerpfade f|r Volume Windows
+Auflistung der Ordnerpfade für Volume Windows
 Volumeseriennummer : 5A0A-3B0A
 C:.
 |   .env
@@ -69,6 +69,7 @@ C:.
 |   |   |           lieferschein_repository.cpython-311.pyc
 |   |   |           
 |   |   +---routes
+|   |   |   |   database.py
 |   |   |   |   dokumente.py
 |   |   |   |   __init__.py
 |   |   |   |   
@@ -88,6 +89,7 @@ C:.
 |   |   |   |   ocr_scheduler.py
 |   |   |   |   ocr_service.py
 |   |   |   |   storage_service.py
+|   |   |   |   storage_service_db_based.py
 |   |   |   |   __init__.py
 |   |   |   |   
 |   |   |   +---document_processing
@@ -132,7 +134,7 @@ C:.
 |           +---kosten
 |           +---lieferscheine
 |           |   +---lieferschein_extern
-|
+|           |           
 |           +---wareneingang
 +---database
 |   +---init.sql
@@ -149,6 +151,7 @@ C:.
     |   vite.config.ts
     |   
     +---node_modules
+    |   |   .package-lock.json
     |           
     +---public
     |   |   vite.svg
@@ -169,6 +172,9 @@ C:.
         |       react.svg
         |       
         +---components
+        |   +---DatabaseViewer
+        |   |       DatabaseViewer.tsx
+        |   |       
         |   +---DocumentList
         |   |       DocumentList.tsx
         |   |       DocumentListItem.tsx

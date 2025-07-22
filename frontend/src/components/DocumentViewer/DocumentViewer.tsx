@@ -24,6 +24,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
   const [error, setError] = useState<string | null>(null);
   const [showOcr, setShowOcr] = useState<boolean>(false);
   const [metadatenFelder, setMetadatenFelder] = useState<MetadatenFeld[]>([]);
+  const [csvReimporting, setCsvReimporting] = useState<boolean>(false);
 
   // Dokumenten-Pfad für PDF-Anzeige
   const documentPath = document?.pfad 
@@ -110,6 +111,59 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
     } finally {
       setLoading(false);
     }
+  };
+
+  // CSV-Reimport Funktion
+  const handleCsvReimport = async (): Promise<void> => {
+    if (!document || !document.id) return;
+    
+    const confirmed = window.confirm(
+      `CSV-Daten für "${document.dateiname}" neu importieren?\n\n` +
+      `Alle vorhandenen Chargen-Datensätze werden gelöscht und neu aus den CSV-Dateien geladen.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+      setCsvReimporting(true);
+      setError(null);
+      
+      const response = await fetch(
+        `http://localhost:8081/api/dokumente/${document.id}/csv-reimport`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.detail || 'Fehler beim CSV-Reimport');
+      }
+      
+      // Erfolgsmeldung anzeigen
+      alert(
+        `CSV-Reimport erfolgreich!\n\n` +
+        `${result.data.deleted_count} alte Datensätze gelöscht\n` +
+        `${result.data.imported_count} neue Datensätze importiert`
+      );
+      
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      setError(`CSV-Reimport fehlgeschlagen: ${errorMsg}`);
+      console.error('CSV-Reimport Fehler:', err);
+    } finally {
+      setCsvReimporting(false);
+    }
+  };
+
+  // Hilfsfunktion: Prüft ob Dokument ein Wareneingang ist
+  const isWareneingangDocument = (): boolean => {
+    return document?.unterkategorie === 'Lieferschein_extern' || 
+          document?.kategorie === 'berta'; // Falls noch alte Kategorisierung
   };
 
   // Keine Dokumentanzeige, wenn kein Dokument ausgewählt ist
@@ -229,6 +283,24 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
                   <path fillRule="evenodd" d="M8 10a4 4 0 00-3.446 6.032l-1.261 1.26a1 1 0 101.414 1.415l1.261-1.261A4 4 0 108 10zm-2 4a2 2 0 114 0 2 2 0 01-4 0z" clipRule="evenodd" />
                 </svg>
               </button>
+              {isWareneingangDocument() && (
+                <button
+                  onClick={handleCsvReimport}
+                  disabled={csvReimporting}
+                  className={`p-1 rounded text-foreground hover:bg-accent ${
+                    csvReimporting ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  title="CSV-Daten neu importieren"
+                >
+                  {csvReimporting ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent"></div>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              )}
             </div>
           </div>
           
