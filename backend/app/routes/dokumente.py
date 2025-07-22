@@ -107,7 +107,12 @@ async def get_dokument_file(dokument_id: int):
     return FileResponse(
         path=file_path, 
         filename=dokument.dateiname,
-        media_type="application/pdf"
+        media_type="application/pdf",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET",
+            "Access-Control-Allow-Headers": "*"
+        }
     )
 
 

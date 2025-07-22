@@ -174,25 +174,31 @@ class OCRScheduler:
         """
         Vollständige Verarbeitung - kann mehrfach aufgerufen werden.
         Überspringt bereits erledigte Schritte.
+        ROBUSTER: Prüft aktuellen Dateipfad dynamisch.
         """
         try:
-            file_path = os.path.join(PDF_INPUT_DIR, filename)
+            # DYNAMISCHE Pfad-Ermittlung statt statischer Pfad
+            current_file_path = self._find_current_file_path(filename)
+            if not current_file_path:
+                logger.warning(f"Datei nicht gefunden: {filename}")
+                return
             
-            logger.info(f"🔄 Verarbeite: {filename}")
+            logger.info(f"🔄 Verarbeite: {filename} (Pfad: {current_file_path})")
             
-            # Marker-Pfade
-            ocr_marker = file_path + '.ocr_processed'
-            doc_processing_marker = file_path + '.doc_processed'
+            # Marker-Pfade basierend auf ORIGINAL Input-Pfad (bleiben konstant)
+            original_input_path = os.path.join(PDF_INPUT_DIR, filename)
+            ocr_marker = original_input_path + '.ocr_processed'
+            doc_processing_marker = original_input_path + '.doc_processed'
             
             # 1. OCR falls nötig
             if not os.path.exists(ocr_marker):
                 logger.info(f"📝 Starte OCR: {filename}")
-                success = await asyncio.to_thread(self._run_ocr_sync, file_path)
+                success = await asyncio.to_thread(self._run_ocr_sync, current_file_path)
                 
                 if success:
                     # OCR-Marker erstellen
                     with open(ocr_marker, 'w') as marker:
-                        marker.write(f"OCR: {os.path.getmtime(file_path)}")
+                        marker.write(f"OCR: {os.path.getmtime(current_file_path)}")
                     logger.info(f"✅ OCR abgeschlossen: {filename}")
                 else:
                     logger.warning(f"❌ OCR fehlgeschlagen: {filename}")
@@ -200,32 +206,46 @@ class OCRScheduler:
             else:
                 logger.debug(f"⏭️  OCR bereits vorhanden: {filename}")
             
-            # 2. Leerseiten-Entfernung (optional)
-            try:
-                await asyncio.to_thread(self._remove_blank_pages_pillow, file_path)
-            except Exception as e:
-                logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen: {e}")
+            # 2. Leerseiten-Entfernung (optional) - nur wenn Datei noch existiert
+            current_file_path = self._find_current_file_path(filename)
+            if current_file_path:
+                try:
+                    await asyncio.to_thread(self._remove_blank_pages_pillow, current_file_path)
+                except Exception as e:
+                    logger.warning(f"⚠️  Leerseiten-Entfernung fehlgeschlagen: {e}")
             
-            # 3. DB-Eintrag falls nötig (mit neuem Repository)
+            # 3. DB-Eintrag falls nötig
             if not self._is_file_in_database(filename):
-                logger.info(f"📋 Füge zur DB hinzu: {filename}")
-                await self._add_to_database(filename, file_path)
+                current_file_path = self._find_current_file_path(filename)
+                if current_file_path:
+                    logger.info(f"📋 Füge zur DB hinzu: {filename}")
+                    await self._add_to_database(filename, current_file_path)
             else:
                 logger.debug(f"⏭️  Bereits in DB: {filename}")
             
             # 4. Document Processing falls nötig
             if not os.path.exists(doc_processing_marker):
+                # WICHTIG: Aktuellen Pfad vor Document Processing ermitteln
+                current_file_path = self._find_current_file_path(filename)
+                if not current_file_path:
+                    logger.warning(f"Datei für Document Processing nicht gefunden: {filename}")
+                    # Trotzdem Marker erstellen um endlose Wiederholung zu vermeiden
+                    with open(doc_processing_marker, 'w') as marker:
+                        marker.write(f"Doc Processing failed - file not found: {filename}")
+                    self.processed_files.add(filename)
+                    return
+                
                 logger.info(f"📄 Starte Document Processing: {filename}")
                 
                 try:
                     if self._document_processor_manager:
                         doc_processed = await self._document_processor_manager.process_document(
-                            file_path, filename
+                            current_file_path, filename
                         )
                         
                         # Document Processing Marker erstellen (egal ob erfolgreich oder nicht)
                         with open(doc_processing_marker, 'w') as marker:
-                            marker.write(f"Doc Processing: {os.path.getmtime(file_path)}")
+                            marker.write(f"Doc Processing: {os.path.getmtime(current_file_path) if os.path.exists(current_file_path) else 'completed'}")
                         
                         if doc_processed:
                             logger.info(f"✅ Document Processing erfolgreich: {filename}")
@@ -235,13 +255,13 @@ class OCRScheduler:
                         logger.debug("Document Processing System nicht verfügbar")
                         # Trotzdem Marker erstellen
                         with open(doc_processing_marker, 'w') as marker:
-                            marker.write(f"Doc Processing unavailable: {os.path.getmtime(file_path)}")
+                            marker.write(f"Doc Processing unavailable: {filename}")
                             
                 except Exception as e:
                     logger.error(f"Document Processing Fehler für {filename}: {e}")
                     # Marker trotzdem erstellen um endlose Wiederholung zu vermeiden
                     with open(doc_processing_marker, 'w') as marker:
-                        marker.write(f"Doc Processing failed: {os.path.getmtime(file_path)}")
+                        marker.write(f"Doc Processing failed: {str(e)}")
             else:
                 logger.debug(f"⏭️  Document Processing bereits erledigt: {filename}")
             
@@ -252,7 +272,48 @@ class OCRScheduler:
             
         except Exception as e:
             logger.error(f"Fehler bei Vollverarbeitung von {filename}: {e}")
-    
+            # Bei schweren Fehlern trotzdem als verarbeitet markieren
+            self.processed_files.add(filename)
+
+    def _find_current_file_path(self, filename: str) -> str:
+        """
+        Findet den aktuellen Pfad einer Datei (könnte verschoben worden sein).
+        
+        Returns:
+            Aktueller Pfad oder None wenn nicht gefunden
+        """
+        try:
+            # 1. Zuerst im Input-Verzeichnis schauen
+            input_path = os.path.join(PDF_INPUT_DIR, filename)
+            if os.path.exists(input_path):
+                return input_path
+            
+            # 2. In der Datenbank nach aktuellem Pfad suchen
+            try:
+                all_dokumente = DokumentRepository.get_all()
+                for dok_dict in all_dokumente:
+                    if dok_dict["dateiname"] == filename and os.path.exists(dok_dict["pfad"]):
+                        return dok_dict["pfad"]
+            except Exception as e:
+                logger.debug(f"DB-Suche fehlgeschlagen: {e}")
+            
+            # 3. In processed-Verzeichnissen suchen (als Fallback)
+            from ..config.settings import PDF_PROCESSED_DIR
+            
+            for root, dirs, files in os.walk(PDF_PROCESSED_DIR):
+                for file in files:
+                    if file == filename or file.startswith(f"lief_ext_") and file.endswith(f"_{filename}"):
+                        full_path = os.path.join(root, file)
+                        if os.path.exists(full_path):
+                            return full_path
+            
+            logger.debug(f"Datei {filename} nicht gefunden")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Suchen der Datei {filename}: {e}")
+            return None
+            
     def _run_ocr_sync(self, file_path: str) -> bool:
         """Synchrone OCR-Ausführung für asyncio.to_thread."""
         try:
@@ -280,11 +341,9 @@ class OCRScheduler:
             logger.error(f"Fehler beim synchronen OCR: {e}")
             return False
     
+
     def _remove_blank_pages_pillow(self, pdf_path: str) -> bool:
-        """
-        Entfernt leere Seiten mit Pillow (pixelbasierte Analyse).
-        Zuverlässiger als textbasierte Ansätze.
-        """
+
         try:
             import io
             import shutil
@@ -304,32 +363,53 @@ class OCRScheduler:
                 for page_num in range(len(doc)):
                     page = doc[page_num]
                     
-                    # Seite als Bild rendern (niedrige Auflösung für Performance)
-                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))  # 50% Größe
+                    # 1. Pixelbasierte Analyse (wie bisher)
+                    pix = page.get_pixmap(matrix=fitz.Matrix(0.5, 0.5))
                     img_data = pix.tobytes("png")
-                    
-                    # Pillow-Image direkt aus Speicher erstellen
                     img = Image.open(io.BytesIO(img_data))
-                    
-                    # Zu Graustufen konvertieren für einfachere Analyse
                     img_gray = img.convert('L')
                     
                     # Histogramm erstellen
                     histogram = img_gray.histogram()
-                    
-                    # Prüfen ob Seite fast nur weiße Pixel hat
                     total_pixels = img_gray.size[0] * img_gray.size[1]
-                    white_pixels = sum(histogram[240:])  # Pixel mit Wert 240-255 (fast weiß)
+                    
+                    # VERSCHÄRFTE Einstellungen für weiße Pixel
+                    white_pixels = sum(histogram[250:])  # Nur 250-255 statt 240-255
                     white_ratio = white_pixels / total_pixels
                     
-                    # Seite ist leer wenn >98% der Pixel weiß sind
-                    is_blank = white_ratio > 0.98
+                    # VERSCHÄRFTER Schwellenwert für Leerseiten
+                    pixel_based_blank = white_ratio > 0.98  
+                    
+                    # 2. Textbasierte Zusatzprüfung für Grenzfälle
+                    text_based_blank = True
+                    if pixel_based_blank:
+                        # Bei pixelbasierten Grenzfällen auch Text prüfen
+                        page_text = page.get_text().strip()
+                        
+                        # Seite ist NICHT leer wenn:
+                        # - Mehr als 10 Zeichen Text
+                        # - Enthält alphanumerische Zeichen
+                        # - Enthält typische Dokumentwörter
+                        meaningful_text = len(page_text) > 10 and any(c.isalnum() for c in page_text)
+                        
+                        # Spezielle Prüfung für Wareneingänge
+                        wareneingang_keywords = ['wareneingang', 'lieferschein', 'bestellung', 'artikel']
+                        contains_keywords = any(keyword in page_text.lower() for keyword in wareneingang_keywords)
+                        
+                        if meaningful_text or contains_keywords:
+                            text_based_blank = False
+                            logger.debug(f"Seite {page_num + 1} durch Text-Prüfung gerettet: '{page_text[:50]}...'")
+                    
+                    # Seite ist nur leer wenn BEIDE Kriterien zutreffen
+                    is_blank = pixel_based_blank and text_based_blank
                     
                     if is_blank:
                         pages_to_remove.append(page_num)
                         logger.debug(f"Seite {page_num + 1} ist leer (weiß: {white_ratio:.1%})")
+                    elif pixel_based_blank:
+                        logger.debug(f"Seite {page_num + 1} fast leer, aber Text gefunden (weiß: {white_ratio:.1%})")
                     
-                    # Explizit Speicher freigeben
+                    # Speicher freigeben
                     img.close()
                     img_gray.close()
                 
@@ -365,7 +445,6 @@ class OCRScheduler:
                     return False
                     
             finally:
-                # Dokument schließen falls noch nicht geschlossen
                 if not doc_closed:
                     try:
                         doc.close()
@@ -373,9 +452,21 @@ class OCRScheduler:
                         pass
             
         except Exception as e:
-            logger.error(f"Fehler bei pixelbasierter Leerseiten-Entfernung: {e}")
+            logger.error(f"Fehler bei verbesserter Leerseiten-Entfernung: {e}")
             return False
-    
+
+
+    # ALTERNATIVE: Konfigurierbare Einstellungen in settings.py
+    """
+    # Zu settings.py hinzufügen:
+    BLANK_PAGE_DETECTION = {
+        "enabled": True,
+        "white_pixel_threshold": 250,  # 250-255 statt 240-255
+        "blank_page_threshold": 0.995,  # 99.5% statt 98%
+        "min_text_length": 10,  # Mindest-Textlänge für Nicht-Leer-Erkennung
+        "preserve_keywords": ["wareneingang", "lieferschein", "bestellung", "artikel"]
+    }
+    """    
     async def _add_to_database(self, filename: str, file_path: str):
         """Fügt neue Datei zur Datenbank hinzu falls noch nicht vorhanden (mit neuem Repository)."""
         try:

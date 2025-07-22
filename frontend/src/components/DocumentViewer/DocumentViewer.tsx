@@ -27,7 +27,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
 
   // Dokumenten-Pfad für PDF-Anzeige
   const documentPath = document?.pfad 
-    ? `http://localhost:8000/api/dokumente/file/${document.id}`
+    ? `http://localhost:8081/api/dokumente/file/${document.id}`
     : '';
 
   // Debug: Pfad zur PDF-Datei anzeigen
@@ -61,9 +61,9 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
     setError(null); // Fehler zurücksetzen bei erfolgreichem Laden
   };
 
-  // PDF-Ladefehler behandeln
   const onDocumentLoadError = (error: Error): void => {
-    console.error('PDF-Ladefehler:', error);
+    console.error('PDF-Ladefehler DETAILS:', error);
+    console.error('PDF-URL war:', documentPath);
     setError(`Die PDF-Datei konnte nicht geladen werden: ${error.message}`);
   };
 
@@ -146,7 +146,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ document, onClose, onDo
           <div className="mt-2 text-sm">
             <p>Mögliche Lösungen:</p>
             <ul className="list-disc list-inside mt-1">
-              <li>Backend-Server läuft auf Port 8000</li>
+              <li>Backend-Server läuft auf Port 8081</li>
               <li>PDF-Worker-Datei ist im public/pdf-worker/ Verzeichnis</li>
               <li>Seite neu laden (F5)</li>
             </ul>

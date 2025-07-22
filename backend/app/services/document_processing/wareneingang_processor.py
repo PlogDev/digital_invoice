@@ -1,17 +1,19 @@
 """
 Wareneingang Document Processor.
 Verarbeitet PDFs mit "Wareneingang" und importiert zugehörige CSV-Daten.
-Aktualisiert für PostgreSQL-Repository-Pattern.
+Aktualisiert für PostgreSQL-Repository-Pattern mit DB-basierter Dateiverwaltung.
 """
 
 import csv
 import os
 import re
+import shutil
 from pathlib import Path
 from typing import List, Optional
 
-from ...config.settings import CSV_LIST_DIR
-from ...database.seed_data import get_unterkategorie_by_name
+from ...config.settings import CSV_LIST_DIR, PDF_PROCESSED_DIR
+from ...database.postgres_connection import get_db_session
+from ...models.database import Kategorie, Unterkategorie
 from ...repositories.dokument_repository import DokumentRepository
 from ...repositories.lieferschein_repository import (
     ChargenEinkaufRepository,
@@ -30,6 +32,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
     3. Kategorisiert als "Lieferschein_extern"
     4. Sucht in CSV-Dateien nach der Lieferscheinnummer
     5. Importiert gefundene Datensätze in die Datenbank
+    6. Verschiebt Datei in entsprechendes Verzeichnis
     """
     
     def __init__(self):
@@ -66,6 +69,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
         3. Lädt CSV-Dateien
         4. Sucht passende Datensätze
         5. Importiert in Datenbank
+        6. Verschiebt Datei in Zielverzeichnis
         """
         self._log_processing_start(pdf_path)
         
@@ -78,7 +82,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
             
             self.logger.info(f"📦 Lieferscheinnummer extrahiert: {lieferscheinnummer}")
             
-            # 2. Zugehöriges Dokument in DB finden (mit neuem Repository)
+            # 2. Zugehöriges Dokument in DB finden
             dokument_dict = self._find_document_by_path(pdf_path)
             if not dokument_dict:
                 self._log_processing_error(pdf_path, "Dokument nicht in Datenbank gefunden")
@@ -94,6 +98,8 @@ class WareneingangProcessor(BaseDocumentProcessor):
             existing_lieferschein = LieferscheinExternRepository.get_by_lieferscheinnummer(lieferscheinnummer)
             if existing_lieferschein:
                 self.logger.info(f"Lieferschein bereits vorhanden: {lieferscheinnummer}")
+                # Trotzdem Datei verschieben falls noch nicht geschehen
+                await self._move_document_to_category(updated_dokument, lieferscheinnummer)
                 return True
             
             # 5. Neuen externen Lieferschein erstellen
@@ -111,14 +117,26 @@ class WareneingangProcessor(BaseDocumentProcessor):
                 # Als importiert markieren
                 LieferscheinExternRepository.mark_csv_imported(lieferschein.id)
                 
+            # 7. Dokument ins Lieferschein_extern-Verzeichnis verschieben
+            move_success = await self._move_document_to_category(updated_dokument, lieferscheinnummer)
+            if move_success:
+                self.logger.info(f"📁 Wareneingang erfolgreich als Lieferschein_extern abgelegt")
+            else:
+                self.logger.warning(f"⚠️  Wareneingang konnte nicht verschoben werden, bleibt im Input-Verzeichnis")
+            
+            # 8. Erfolgsmeldung
+            if csv_import_count > 0:
                 self._log_processing_success(
                     pdf_path, 
                     f"Lieferschein {lieferscheinnummer}, {csv_import_count} CSV-Datensätze importiert"
                 )
-                return True
             else:
-                self.logger.warning(f"Keine CSV-Datensätze für Lieferscheinnummer {lieferscheinnummer} gefunden")
-                return True  # Trotzdem erfolgreich, nur keine CSV-Daten
+                self._log_processing_success(
+                    pdf_path,
+                    f"Lieferschein {lieferscheinnummer} verarbeitet (keine CSV-Daten gefunden)"
+                )
+                
+            return True
             
         except Exception as e:
             self._log_processing_error(pdf_path, str(e))
@@ -164,12 +182,12 @@ class WareneingangProcessor(BaseDocumentProcessor):
             return None
     
     def _find_document_by_path(self, pdf_path: str) -> Optional[dict]:
-        """Findet das Dokument in der Datenbank anhand des Pfads (mit neuem Repository)."""
+        """Findet das Dokument in der Datenbank anhand des Pfads."""
         try:
             # Dateiname aus Pfad extrahieren
             filename = os.path.basename(pdf_path)
             
-            # Fallback: Alle Dokumente durchsuchen (gibt bereits Dictionaries zurück)
+            # Alle Dokumente durchsuchen (gibt bereits Dictionaries zurück)
             all_dokumente = DokumentRepository.get_all()
             for dok_dict in all_dokumente:
                 if dok_dict["dateiname"] == filename or dok_dict["pfad"] == pdf_path:
@@ -183,7 +201,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
             return None
     
     def _categorize_document(self, dokument_id: int) -> Optional[dict]:
-        """Kategorisiert Dokument als Lieferschein_extern."""
+        """Kategorisiert Dokument als Lieferscheine/Lieferschein_extern (= Wareneingang)."""
         try:
             # Dokument als "Lieferscheine/Lieferschein_extern" kategorisieren
             updated_dokument = DokumentRepository.update_kategorie(
@@ -193,7 +211,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
             )
             
             if updated_dokument:
-                self.logger.info(f"📂 Dokument {dokument_id} als Lieferschein_extern kategorisiert")
+                self.logger.info(f"📂 Dokument {dokument_id} als Lieferschein_extern (Wareneingang) kategorisiert")
                 return updated_dokument
             else:
                 self.logger.error(f"Fehler beim Kategorisieren von Dokument {dokument_id}")
@@ -203,10 +221,117 @@ class WareneingangProcessor(BaseDocumentProcessor):
             self.logger.error(f"Fehler beim Kategorisieren: {e}")
             return None
     
+    async def _move_document_to_category(self, dokument_dict: dict, lieferscheinnummer: str = None) -> bool:
+        """
+        Verschiebt das Dokument ins Lieferschein_extern-Verzeichnis mit eindeutiger Benennung.
+        Format: lief_ext_[Lieferscheinnummer]_[DDMMYY_hhmmss]_[DB_ID].pdf
+        """
+        try:
+            # Zielverzeichnis aus DB ermitteln
+            target_dir = self._get_category_path("Lieferscheine", "Lieferschein_extern")
+            if not target_dir:
+                self.logger.error("Zielverzeichnis konnte nicht ermittelt werden")
+                return False
+            
+            # Verzeichnis erstellen falls nicht vorhanden
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Aktueller Pfad prüfen
+            alter_pfad = dokument_dict["pfad"]
+            
+            # Prüfen ob Datei existiert
+            if not os.path.exists(alter_pfad):
+                self.logger.warning(f"Quelldatei nicht gefunden, möglicherweise bereits verschoben: {alter_pfad}")
+                return True  # Als erfolgreich betrachten
+            
+            # Prüfen ob bereits im Zielverzeichnis
+            if str(target_dir) in alter_pfad:
+                self.logger.debug(f"Datei bereits im Zielverzeichnis: {os.path.basename(alter_pfad)}")
+                return True
+            
+            # Eindeutigen Dateinamen generieren
+            from datetime import datetime
+            
+            db_id = dokument_dict["id"]
+            
+            # Zeitstempel generieren
+            timestamp = datetime.now().strftime("%d%m%y_%H%M%S")
+            
+            # Lieferscheinnummer für Dateinamen bereinigen (nur alphanumerisch + - und _)
+            safe_lieferscheinnummer = "unbekannt"
+            if lieferscheinnummer:
+                safe_lieferscheinnummer = ''.join(c for c in lieferscheinnummer if c.isalnum() or c in '-_')
+                if not safe_lieferscheinnummer:  # Falls nach Bereinigung leer
+                    safe_lieferscheinnummer = "unbekannt"
+            
+            # Neuen Dateinamen erstellen
+            neuer_dateiname = f"lief_ext_{safe_lieferscheinnummer}_{timestamp}_{db_id}.pdf"
+            neuer_pfad = target_dir / neuer_dateiname
+            
+            # Datei verschieben und umbenennen
+            shutil.move(alter_pfad, str(neuer_pfad))
+            
+            # Marker-Dateien auch aufräumen
+            self._cleanup_marker_files(alter_pfad)
+            
+            # Pfad UND Dateiname in DB aktualisieren
+            DokumentRepository.update_pfad_und_dateiname(
+                dokument_dict["id"], 
+                str(neuer_pfad),
+                neuer_dateiname
+            )
+            
+            self.logger.info(f"📂 Wareneingang verschoben und umbenannt: {os.path.basename(alter_pfad)} → {neuer_dateiname}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Fehler beim Verschieben des Wareneingangs: {e}")
+            return False
+    
+    def _get_category_path(self, kategorie_name: str, unterkategorie_name: str) -> Optional[Path]:
+        """
+        Ermittelt den Dateipfad für eine Kategorie/Unterkategorie aus der DB.
+        """
+        try:
+            with get_db_session() as session:
+                unterkategorie = session.query(Unterkategorie)\
+                    .join(Kategorie)\
+                    .filter(Kategorie.name == kategorie_name)\
+                    .filter(Unterkategorie.name == unterkategorie_name)\
+                    .first()
+                
+                if unterkategorie:
+                    # Verzeichnisstruktur: processed/kategorie/unterkategorie
+                    # z.B.: processed/lieferscheine/lieferschein_extern
+                    category_path = PDF_PROCESSED_DIR / kategorie_name.lower() / unterkategorie_name.lower()
+                    return category_path
+                else:
+                    self.logger.error(f"Kategorie/Unterkategorie nicht gefunden: {kategorie_name}/{unterkategorie_name}")
+                    return None
+                    
+        except Exception as e:
+            self.logger.error(f"Fehler beim Ermitteln des Kategoriepfads: {e}")
+            return None
+    
+    def _cleanup_marker_files(self, original_path: str):
+        """Räumt Marker-Dateien auf."""
+        try:
+            # OCR-Marker entfernen
+            ocr_marker = original_path + '.ocr_processed'
+            if os.path.exists(ocr_marker):
+                os.remove(ocr_marker)
+            
+            # Document Processing Marker entfernen
+            doc_marker = original_path + '.doc_processed'
+            if os.path.exists(doc_marker):
+                os.remove(doc_marker)
+                
+        except Exception as e:
+            self.logger.warning(f"Fehler beim Aufräumen der Marker-Dateien: {e}")
+    
     async def _import_csv_data(self, lieferschein, lieferscheinnummer: str) -> int:
         """
         Importiert CSV-Daten für die gegebene Lieferscheinnummer.
-        Jetzt mit verbessertem Matching und Logging.
         """
         try:
             # CSV-Dateien laden (mit Cache)
@@ -227,7 +352,7 @@ class WareneingangProcessor(BaseDocumentProcessor):
                 
                 # Exakter Match
                 if csv_lieferscheinnr == lieferscheinnummer:
-                    # Datensatz importieren (mit neuem Repository)
+                    # Datensatz importieren
                     charge = ChargenEinkaufRepository.create_from_csv_row(lieferschein.id, csv_row)
                     if charge:
                         import_count += 1
@@ -300,12 +425,6 @@ class WareneingangProcessor(BaseDocumentProcessor):
     def _load_single_csv(self, csv_path: str) -> List[dict]:
         """
         Lädt eine einzelne CSV-Datei mit robustem Delimiter-Detection.
-        
-        Args:
-            csv_path: Pfad zur CSV-Datei
-            
-        Returns:
-            Liste der CSV-Datensätze als Dictionaries
         """
         try:
             csv_data = []

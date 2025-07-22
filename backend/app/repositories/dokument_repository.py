@@ -258,7 +258,42 @@ class DokumentRepository:
         except Exception as e:
             logger.error(f"Fehler beim Aktualisieren des Pfads für Dokument {dokument_id}: {e}")
             return None
-    
+
+    @staticmethod
+    def update_pfad_und_dateiname(dokument_id: int, neuer_pfad: str, neuer_dateiname: str) -> Optional[Dokument]:
+        """
+        Aktualisiert sowohl Pfad als auch Dateiname eines Dokuments (nach Verschiebung/Umbenennung).
+        
+        Args:
+            dokument_id: ID des Dokuments
+            neuer_pfad: Neuer vollständiger Pfad
+            neuer_dateiname: Neuer Dateiname
+            
+        Returns:
+            Aktualisiertes Dokument oder None bei Fehler
+        """
+        try:
+            with get_db_session() as session:
+                dokument = session.query(Dokument).filter(Dokument.id == dokument_id).first()
+                if not dokument:
+                    logger.error(f"Dokument {dokument_id} nicht gefunden für Pfad/Name-Update")
+                    return None
+                
+                # Beide Felder aktualisieren
+                dokument.pfad = neuer_pfad
+                dokument.dateiname = neuer_dateiname
+                
+                session.flush()
+                session.refresh(dokument)
+                session.expunge(dokument)
+                
+                logger.info(f"Pfad und Dateiname aktualisiert für Dokument {dokument_id}: {neuer_dateiname}")
+                return dokument
+                
+        except Exception as e:
+            logger.error(f"Fehler beim Aktualisieren von Pfad/Dateiname für Dokument {dokument_id}: {e}")
+            return None
+
     @staticmethod
     def delete(dokument_id: int) -> bool:
         """Löscht ein Dokument aus der Datenbank."""
