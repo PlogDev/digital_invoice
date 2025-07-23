@@ -18,26 +18,12 @@ services:
       timeout: 10s
       retries: 5
     restart: unless-stopped
-    networks:
-      - ocr_network
 
   backend:
-    image: python:3.11-slim
+    build:
+      context: https://github.com/PlogDev/digital_invoice.git#main
+      dockerfile: backend/Dockerfile.portainer
     container_name: ocr_backend
-    working_dir: /app
-    command: >
-      bash -c "
-      apt-get update && 
-      apt-get install -y git curl tesseract-ocr tesseract-ocr-deu poppler-utils ghostscript unpaper qpdf liblept5 libtesseract5 gcc g++ && 
-      git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
-      cp -r /tmp/repo/backend/* /app/ &&
-      pip install --no-cache-dir --upgrade pip &&
-      pip install --no-cache-dir -r requirements.txt &&
-      mkdir -p /app/pdfs/input /app/pdfs/processed /app/pdfs/csv_lists &&
-      sleep 15 &&
-      python -c 'from app.database.postgres_connection import init_database; init_database()' || echo 'DB init failed' &&
-      uvicorn app.main:app --host 0.0.0.0 --port 8081
-      "
     ports:
       - "8081:8081"
     environment:
@@ -45,47 +31,27 @@ services:
       - PYTHONPATH=/app
       - PORT=8081
       - TESSERACT_CMD=/usr/bin/tesseract
+      - PYTHONUNBUFFERED=1
     volumes:
       - backend_data:/app/pdfs
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    restart: unless-stopped
-    networks:
-      - ocr_network
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
 
   frontend:
-    image: node:18-alpine
+    build:
+      context: https://github.com/PlogDev/digital_invoice.git#main
+      dockerfile: frontend/Dockerfile.portainer
     container_name: ocr_frontend
-    working_dir: /app
-    command: >
-      sh -c "
-      apk add --no-cache git &&
-      git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
-      cp -r /tmp/repo/frontend/* /app/ &&
-      npm ci &&
-      npm run dev -- --host 0.0.0.0 --port 3000
-      "
     ports:
-      - "3000:3000"
+      - "3000:80"  # Nginx auf Port 80, extern auf 3000
     environment:
       - VITE_API_BASE_URL=http://localhost:8081/api
-    restart: unless-stopped
-    networks:
-      - ocr_network
     depends_on:
       - backend
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   backend_data:
-
-networks:
-  ocr_network:
-    driver: bridge
