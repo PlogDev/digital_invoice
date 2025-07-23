@@ -1,65 +1,47 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Datenbank
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: ocr_postgres
+    network_mode: host
     environment:
       POSTGRES_DB: ocr_docs
       POSTGRES_USER: ocr_user
       POSTGRES_PASSWORD: ocr_secure_2024
-      POSTGRES_HOST_AUTH_METHOD: trust
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ocr_user -d ocr_docs"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
     restart: unless-stopped
 
-  # Backend API (KORRIGIERT: Port 8081)
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: ocr_backend
-    ports:
-      - "8081:8081"  # Korrigiert von 8080 auf 8081
+    network_mode: host
     environment:
-      - DATABASE_URL=postgresql://ocr_user:ocr_secure_2024@postgres:5432/ocr_docs
+      - DATABASE_URL=postgresql://ocr_user:ocr_secure_2024@localhost:5432/ocr_docs
       - PYTHONPATH=/app
-      - PORT=8081  # Korrigiert
+      - PORT=8081
+      - TESSERACT_CMD=/usr/bin/tesseract
     volumes:
-      - ./backend:/app
-      - ./backend/pdfs:/app/pdfs
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - backend_data:/app/pdfs
     restart: unless-stopped
-    # ENTFERNT: profiles -> startet jetzt standardmäßig
+    depends_on:
+      - postgres
 
-  # Frontend (React/Vite)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: ocr_frontend
-    ports:
-      - "3000:3000"
+    network_mode: host
     environment:
-      - VITE_API_BASE_URL=http://localhost:8081/api  # Korrigierte URL
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - VITE_API_BASE_URL=http://localhost:8081/api
+    restart: unless-stopped
     depends_on:
       - backend
-    restart: unless-stopped
-    # ENTFERNT: profiles -> startet jetzt standardmäßig
 
 volumes:
   postgres_data:
+  backend_data:
