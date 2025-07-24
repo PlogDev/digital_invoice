@@ -1,8 +1,5 @@
-# Erweitere dein bestehendes Dockerfile:
-
 FROM python:3.11-slim
 
-# System Dependencies installieren (ERWEITERT mit SMB-Tools)
 RUN apt-get update && apt-get install -y \
     git \
     curl \
