@@ -218,7 +218,7 @@ export const smbService = {
    */
   configure: async (config: SMBConnectionConfig): Promise<any> => {
     try {
-      const response = await apiClient.post('/dokumentre/smb/configure', config);
+      const response = await apiClient.post('/dokumente/smb/configure', config);
       return response.data;
     } catch (error) {
       console.error('Fehler beim Konfigurieren der SMB-Verbindung:', error);

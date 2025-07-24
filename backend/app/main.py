@@ -67,9 +67,12 @@ async def lifespan(app: FastAPI):
 # FastAPI-App erstellen
 app = FastAPI(
     title="OCR-Dokumentenverwaltungssystem",
-    description="API für das OCR-basierte Dokumentenverwaltungssystem",
-    version="0.2.0",  # Version erhöht für PostgreSQL
-    lifespan=lifespan
+    description="API für das OCR-basierte Dokumentenverwaltungssystem mit SMB-Integration",
+    version="0.2.0",
+    lifespan=lifespan,
+    docs_url="/docs",  # Explizit setzen
+    redoc_url="/redoc",  # Alternative Docs
+    openapi_url="/openapi.json"  # OpenAPI Schema
 )
 
 # CORS-Middleware hinzufügen
@@ -89,10 +92,23 @@ os.makedirs(PDF_DIR, exist_ok=True)
 app.mount("/pdfs", StaticFiles(directory=str(PDF_DIR)), name="pdfs")
 
 # Routen registrieren
+@app.get("/debug/routes")
+async def debug_routes():
+    """Debug: Zeigt alle verfügbaren Routes"""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, 'methods'):
+            routes.append({
+                "path": route.path,
+                "methods": list(route.methods),
+                "name": route.name
+            })
+    return {"routes": routes}
+
+# Routen registrieren (NACH dem debug endpoint)
 app.include_router(dokumente_router, prefix=API_PREFIX)
 app.include_router(database_router, prefix=API_PREFIX)
-app.include_router(smb_router, prefix=API_PREFIX)
-
+app.include_router(smb_router, prefix=API_PREFIX)  # SMB-Router hinzufügen
 
 @app.get("/")
 async def root():
@@ -102,7 +118,10 @@ async def root():
         "version": "0.2.0",
         "database": "PostgreSQL",
         "docs": "/docs",
-        "database_viewer": "/api/database/stats",  # NEU: Database Viewer Hinweis
+        "redoc": "/redoc",
+        "debug_routes": "/debug/routes",  # NEU
+        "database_viewer": "/api/database/stats", 
+        "smb_status": "/api/dokumente/smb/status",  # NEU
         "ocr_scheduler": {
             "running": ocr_scheduler.running,
             "processed_files": len(ocr_scheduler.processed_files)
