@@ -22,7 +22,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: /Dockerfile.portainer
+      dockerfile: backend/Dockerfile.portainer
     container_name: ocr_backend
     ports:
       - "8081:8081"
@@ -42,7 +42,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: /Dockerfile.portainer
+      dockerfile: frontend/Dockerfile.portainer
     container_name: ocr_frontend
     ports:
       - "3000:80"  # Nginx auf Port 80, extern auf 3000
