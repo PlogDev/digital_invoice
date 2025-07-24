@@ -213,28 +213,40 @@ export interface SMBStatus {
 
 // SMB-Service
 export const smbService = {
-  /**
-   * SMB-Verbindung konfigurieren
-   */
   configure: async (config: SMBConnectionConfig): Promise<any> => {
     try {
-      const response = await apiClient.post('/dokumente/smb/configure', config);
+      const url = '/dokumente/smb/configure';
+      console.log('🔍 SMB Configure URL:', `${API_BASE_URL}${url}`);
+      console.log('🔍 SMB Configure Data:', config);
+      
+      const response = await apiClient.post(url, config);
       return response.data;
-    } catch (error) {
-      console.error('Fehler beim Konfigurieren der SMB-Verbindung:', error);
+    } catch (error: any) {
+      console.error('❌ SMB Configure Error Details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        url: error.config?.url,
+        baseURL: error.config?.baseURL,
+        fullURL: `${error.config?.baseURL}${error.config?.url}`,
+        data: error.response?.data
+      });
       throw error;
     }
   },
 
-  /**
-   * SMB-Status abrufen
-   */
   getStatus: async (): Promise<SMBStatus> => {
     try {
-      const response = await apiClient.get('/dokumente/smb/status');
+      const url = '/dokumente/smb/status';
+      console.log('🔍 SMB Status URL:', `${API_BASE_URL}${url}`);
+      
+      const response = await apiClient.get(url);
       return response.data;
-    } catch (error) {
-      console.error('Fehler beim Abrufen des SMB-Status:', error);
+    } catch (error: any) {
+      console.error('❌ SMB Status Error Details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        fullURL: `${error.config?.baseURL}${error.config?.url}`,
+      });
       throw error;
     }
   },

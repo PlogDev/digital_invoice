@@ -9,8 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config.settings import API_PREFIX, CORS_ORIGINS
-
-# GEÄNDERT: PostgreSQL statt SQLite
 from .database.postgres_connection import init_database
 from .routes.database import router as database_router  # NEU: Database-Routes
 from .routes.dokumente import router as dokumente_router
