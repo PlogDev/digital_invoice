@@ -3,7 +3,9 @@ import { BrowserRouter as Router, Route, Routes, Link, useLocation } from 'react
 import { Dokument } from './types';
 import DocumentList from './components/DocumentList';
 import DocumentViewer from './components/DocumentViewer';
-import DatabaseViewer from './components/DatabaseViewer/DatabaseViewer'; // NEU: DatabaseViewer
+import DatabaseViewer from './components/DatabaseViewer/DatabaseViewer';
+import WindowsSMBManager from './components/WindowsSMBManager/WindowsSMBManager';
+
 import {
   FileText,
   Menu,
@@ -12,9 +14,9 @@ import {
   Upload,
   Settings,
   Search,
-  Database  // NEU: Database Icon
+  Database,
+  Server
 } from 'lucide-react';
-import WindowsSMBManager from './components/WindowsSMBManager/WindowsSMBManager';
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,12 +24,12 @@ interface LayoutProps {
 
 const navigation = [
   { name: 'Dokumente', href: '/', icon: FileText },
+  { name: 'Windows Server', href: '/smb', icon: Server }, // NEU: SMB-Navigation
   { name: 'Archiv', href: '/archiv', icon: Archive },
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Suche', href: '/suche', icon: Search },
-  { name: 'Datenbank', href: '/database', icon: Database }, // NEU: Database-Menüpunkt
+  { name: 'Datenbank', href: '/database', icon: Database }, // Falls du den Database Viewer hast
   { name: 'Einstellungen', href: '/einstellungen', icon: Settings },
-    { name: 'Windows Server', href: '/smb', icon: DatabaseViewer },
 ];
 
 const Layout = ({ children }: LayoutProps) => {
@@ -122,9 +124,9 @@ function App() {
         } />
         <Route path="/smb" element={
           <Layout>
-            <WindowsSMBManager />
+            <WindowsSMBManager /> {/* NEU: SMB Route */}
           </Layout>
-        } />        
+        } />
         <Route path="/archiv" element={
           <Layout>
             <ArchivContent />
