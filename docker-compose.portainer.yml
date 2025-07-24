@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ocr_postgres
+    environment:
+      POSTGRES_DB: ocr_docs
+      POSTGRES_USER: ocr_user
+      POSTGRES_PASSWORD: ocr_secure_2024
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocr_user -d ocr_docs"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: python:3.11-slim
+    container_name: ocr_backend
+    ports:
+      - "8081:8081"
+    environment:
+      - DATABASE_URL=postgresql://ocr_user:ocr_secure_2024@postgres:5432/ocr_docs
+      - PYTHONPATH=/app
+      - PORT=8081
+      - TESSERACT_CMD=/usr/bin/tesseract
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - backend_data:/app/pdfs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      sh -c "
+        apt-get update &&
+        apt-get install -y git curl tesseract-ocr tesseract-ocr-deu poppler-utils ghostscript unpaper qpdf liblept5 libtesseract5 gcc g++ &&
+        git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
+        cp -r /tmp/repo/backend/* /app/ &&
+        cd /app &&
+        pip install --no-cache-dir --upgrade pip &&
+        pip install --no-cache-dir -r requirements.txt &&
+        mkdir -p /app/pdfs/input /app/pdfs/processed /app/pdfs/csv_lists &&
+        sleep 10 &&
+        python -c 'from app.database.postgres_connection import init_database; init_database()' || echo 'DB init failed' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8081
+      "
+
+  frontend:
+    image: node:18-alpine
+    container_name: ocr_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8081/api
+    depends_on:
+      - backend
+    restart: unless-stopped
+    command: >
+      sh -c "
+        apk add --no-cache git &&
+        git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
+        cp -r /tmp/repo/frontend/* /app/ &&
+        cd /app &&
+        npm ci &&
+        npm run build &&
+        npm install -g serve &&
+        serve -s dist -l 80
+      "
+
+volumes:
+  postgres_data:
+  backend_data:
