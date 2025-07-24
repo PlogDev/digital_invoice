@@ -120,7 +120,7 @@ function App() {
             <HomeContent />
           </Layout>
         } />
-        <Route path="/archiv" element={
+        <Route path="/smb" element={
           <Layout>
             <WindowsSMBManager />
           </Layout>
