@@ -14,6 +14,7 @@ import {
   Pause,
   Settings
 } from 'lucide-react';
+import { smbService } from '../../services/api';
 
 interface SMBStatus {
   configured: boolean;
@@ -63,7 +64,7 @@ const WindowsSMBManager: React.FC = () => {
   const [autoSync, setAutoSync] = useState(false);
   const [autoSyncInterval, setAutoSyncInterval] = useState<number | null>(null);
 
-  const API_BASE_URL = 'http://localhost:8081/api';
+  // const API_BASE_URL = 'http://localhost:8081/api';
 
   // Status beim Laden abrufen
   useEffect(() => {
@@ -94,8 +95,7 @@ const WindowsSMBManager: React.FC = () => {
 
   const loadSMBStatus = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dokumente/smb/status`);
-      const data = await response.json();
+      const data = await smbService.getStatus(); // ✅ Service verwenden
       setSmbStatus(data);
     } catch (err) {
       setError('Fehler beim Laden des SMB-Status');
@@ -108,25 +108,19 @@ const WindowsSMBManager: React.FC = () => {
     setSuccess(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/dokumente/smb/configure`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(configForm),
-      });
+      const data = await smbService.configure(configForm); // ✅ Service verwenden
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data.success) {
         setSuccess(`✅ ${data.message} - ${data.total_pdfs} PDFs in ${data.backup_folders.length} Backup-Ordnern gefunden`);
         setTimeout(() => setSuccess(null), 5000);
         loadSMBStatus();
       } else {
         setError(data.detail || 'Konfiguration fehlgeschlagen');
       }
-    } catch (err) {
-      setError('Verbindungsfehler beim Konfigurieren');
+    } catch (err: any) {
+      // Besseres Error-Handling
+      const errorMsg = err.response?.data?.detail || err.message || 'Verbindungsfehler beim Konfigurieren';
+      setError(errorMsg);
     } finally {
       setConfiguring(false);
     }
@@ -137,21 +131,18 @@ const WindowsSMBManager: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/dokumente/smb/sync`, {
-        method: 'POST',
-      });
+      const data = await smbService.sync(); // ✅ Service verwenden
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data.success) {
         setLastSyncResults(data.sync_results);
         setSuccess(data.message);
         setTimeout(() => setSuccess(null), 5000);
       } else {
         setError(data.detail || 'Sync fehlgeschlagen');
       }
-    } catch (err) {
-      setError('Verbindungsfehler beim Sync');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Verbindungsfehler beim Sync';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -159,13 +150,9 @@ const WindowsSMBManager: React.FC = () => {
 
   const disconnectSMB = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dokumente/smb/disconnect`, {
-        method: 'DELETE',
-      });
+      const data = await smbService.disconnect(); // ✅ Service verwenden
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (data.success) {
         setSuccess(data.message);
         setTimeout(() => setSuccess(null), 3000);
         setSmbStatus({ configured: false, connection_active: false });
@@ -174,8 +161,9 @@ const WindowsSMBManager: React.FC = () => {
       } else {
         setError('Fehler beim Trennen der Verbindung');
       }
-    } catch (err) {
-      setError('Verbindungsfehler beim Trennen');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Verbindungsfehler beim Trennen';
+      setError(errorMsg);
     }
   };
 

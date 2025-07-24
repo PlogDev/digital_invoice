@@ -14,6 +14,7 @@ import {
   Search,
   Database  // NEU: Database Icon
 } from 'lucide-react';
+import WindowsSMBManager from './components/WindowsSMBManager/WindowsSMBManager';
 
 interface LayoutProps {
   children: ReactNode;
@@ -26,6 +27,7 @@ const navigation = [
   { name: 'Suche', href: '/suche', icon: Search },
   { name: 'Datenbank', href: '/database', icon: Database }, // NEU: Database-Menüpunkt
   { name: 'Einstellungen', href: '/einstellungen', icon: Settings },
+    { name: 'Windows Server', href: '/smb', icon: DatabaseViewer },
 ];
 
 const Layout = ({ children }: LayoutProps) => {
@@ -118,6 +120,11 @@ function App() {
             <HomeContent />
           </Layout>
         } />
+        <Route path="/archiv" element={
+          <Layout>
+            <WindowsSMBManager />
+          </Layout>
+        } />        
         <Route path="/archiv" element={
           <Layout>
             <ArchivContent />

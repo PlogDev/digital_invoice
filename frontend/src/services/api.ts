@@ -185,7 +185,116 @@ export const metadatenService = {
   },
 };
 
+// SMB-Konfiguration Interface
+export interface SMBConnectionConfig {
+  server: string;
+  share: string;
+  username: string;
+  password: string;
+  remote_base_path: string;
+  domain?: string;
+}
+
+// SMB-Status Interface  
+export interface SMBStatus {
+  configured: boolean;
+  connection_active: boolean;
+  server?: string;
+  share?: string;
+  username?: string;
+  domain?: string;
+  remote_path?: string;
+  configured_at?: string;
+  backup_folders?: Array<{
+    name: string;
+    pdf_count: number;
+  }>;
+}
+
+// SMB-Service
+export const smbService = {
+  /**
+   * SMB-Verbindung konfigurieren
+   */
+  configure: async (config: SMBConnectionConfig): Promise<any> => {
+    try {
+      const response = await apiClient.post('/dokumentre/smb/configure', config);
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim Konfigurieren der SMB-Verbindung:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * SMB-Status abrufen
+   */
+  getStatus: async (): Promise<SMBStatus> => {
+    try {
+      const response = await apiClient.get('/dokumente/smb/status');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim Abrufen des SMB-Status:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * SMB-Dateien scannen
+   */
+  scan: async (): Promise<any> => {
+    try {
+      const response = await apiClient.post('/dokumente/smb/scan');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim SMB-Scan:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * SMB-Dateien herunterladen
+   */
+  download: async (): Promise<any> => {
+    try {
+      const response = await apiClient.post('/dokumente/smb/download');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim SMB-Download:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Kompletten SMB-Sync durchführen
+   */
+  sync: async (): Promise<any> => {
+    try {
+      const response = await apiClient.post('/dokumente/smb/sync');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim SMB-Sync:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * SMB-Verbindung trennen
+   */
+  disconnect: async (): Promise<any> => {
+    try {
+      const response = await apiClient.delete('/dokumente/smb/disconnect');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim Trennen der SMB-Verbindung:', error);
+      throw error;
+    }
+  },
+};
+
+// Export erweitern
 export default {
   dokument: dokumentService,
   metadaten: metadatenService,
+  smb: smbService, // NEU
 };
