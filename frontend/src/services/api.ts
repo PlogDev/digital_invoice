@@ -13,7 +13,7 @@ import {
 } from '../types';
 
 // API-Basis-URL
-const API_BASE_URL = 'http://192.168.66.106:8081/api';
+const API_BASE_URL = 'http://192.168.66.106:8081';
 
 // Axios-Instanz mit Basis-URL
 const apiClient = axios.create({
