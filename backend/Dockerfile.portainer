@@ -1,6 +1,8 @@
+# Erweitere dein bestehendes Dockerfile:
+
 FROM python:3.11-slim
 
-# System Dependencies installieren
+# System Dependencies installieren (ERWEITERT mit SMB-Tools)
 RUN apt-get update && apt-get install -y \
     curl \
     tesseract-ocr \
@@ -13,12 +15,14 @@ RUN apt-get update && apt-get install -y \
     libtesseract5 \
     gcc \
     g++ \
+    smbclient \
+    cifs-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Arbeitsverzeichnis
 WORKDIR /app
 
-# Requirements zuerst (für besseres Caching)
+# Requirements erweitern
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt

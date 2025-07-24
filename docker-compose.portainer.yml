@@ -20,7 +20,9 @@ services:
     restart: unless-stopped
 
   backend:
-    image: python:3.11-slim
+    build:
+      context: https://github.com/PlogDev/digital_invoice.git#main
+      dockerfile: backend/Dockerfile.portainer
     container_name: ocr_backend
     ports:
       - "8081:8081"
@@ -36,44 +38,19 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    command: >
-      sh -c "
-        apt-get update &&
-        apt-get install -y git curl tesseract-ocr tesseract-ocr-deu poppler-utils ghostscript unpaper qpdf liblept5 libtesseract5 gcc g++ &&
-        rm -rf /tmp/repo || true &&
-        git clone https://github.com/PlogDev/digital_invoice.git /app/repo || (rm -rf /app/repo && git clone https://github.com/PlogDev/digital_invoice.git /app/repo) &&
-        cp -r /app/repo/backend/* /app/ &&
-        rm -rf /app/repo &&
-        cd /app &&
-        pip install --no-cache-dir --upgrade pip &&
-        pip install --no-cache-dir -r requirements.txt &&
-        mkdir -p /app/pdfs/input /app/pdfs/processed /app/pdfs/csv_lists &&
-        sleep 10 &&
-        python -c 'from app.database.postgres_connection import init_database; init_database()' || echo 'DB init failed' &&
-        uvicorn app.main:app --host 0.0.0.0 --port 8081
-      "
 
   frontend:
-    image: node:18-alpine
+    build:
+      context: https://github.com/PlogDev/digital_invoice.git#main
+      dockerfile: frontend/Dockerfile.portainer
     container_name: ocr_frontend
     ports:
-      - "3000:80"
+      - "3000:80"  # Nginx auf Port 80, extern auf 3000
     environment:
       - VITE_API_BASE_URL=http://localhost:8081/api
     depends_on:
       - backend
     restart: unless-stopped
-    command: >
-      sh -c "
-        apk add --no-cache git &&
-        git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
-        cp -r /tmp/repo/frontend/* /app/ &&
-        cd /app &&
-        npm ci &&
-        npm run build &&
-        npm install -g serve &&
-        serve -s dist -l 80
-      "
 
 volumes:
   postgres_data:
