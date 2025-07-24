@@ -63,36 +63,21 @@ async def lifespan(app: FastAPI):
         logger.error(f"Fehler beim Stoppen des OCR-Schedulers: {e}")
 
 
-# FastAPI-App erstellen - FIX für Swagger UI
+# FastAPI-App erstellen - HARDCORE FIX für Swagger UI
 app = FastAPI(
     title="OCR-Dokumentenverwaltungssystem",
     description="API für das OCR-basierte Dokumentenverwaltungssystem mit SMB-Integration",
     version="0.2.0",
     lifespan=lifespan,
-    # ✅ FIX: Swagger UI CDN konfigurieren für korrekte Asset-Loading
-    docs_url="/docs",  
-    redoc_url="/redoc",  
-    openapi_url="/openapi.json",
-    # NEU: Swagger UI/ReDoc mit CDN-URLs konfigurieren
-    swagger_ui_parameters={
-        "tryItOutEnabled": True,
-        "displayOperationId": False,
-        "defaultModelsExpandDepth": 2,
-        "defaultModelExpandDepth": 2,
-        "docExpansion": "list",
-        "persistAuthorization": True,
-    }
+    docs_url=None,  # ✅ FIX: Deaktivieren, wir erstellen eigene
+    redoc_url=None,  # ✅ FIX: Deaktivieren, wir erstellen eigene
+    openapi_url="/openapi.json"
 )
 
-# CORS-Middleware hinzufügen - ERWEITERT für Swagger UI
+# CORS-Middleware hinzufügen - VEREINFACHT
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS + [
-        "http://localhost:8081",
-        "http://192.168.66.101:8081", 
-        "https://cdn.jsdelivr.net",    # ✅ FIX: Swagger UI Assets
-        "https://unpkg.com"            # ✅ FIX: Swagger UI Assets
-    ],
+    allow_origins=["*"],  # ✅ FIX: Alles erlauben für Development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -123,6 +108,29 @@ async def debug_routes():
 app.include_router(dokumente_router, prefix=API_PREFIX)
 app.include_router(database_router, prefix=API_PREFIX)
 app.include_router(smb_router, prefix=API_PREFIX)  # SMB-Router hinzufügen
+
+# ✅ HARDCORE FIX: Eigene Swagger UI mit funktionierenden CDN-Links
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    """Custom Swagger UI mit funktionierenden CDN-Links."""
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="OCR-Dokumentenverwaltung API",
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css",
+    )
+
+@app.get("/redoc", include_in_schema=False)
+async def custom_redoc_html():
+    """Custom ReDoc mit funktionierenden CDN-Links."""
+    return get_redoc_html(
+        openapi_url="/openapi.json",
+        title="OCR-Dokumentenverwaltung API",
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@2.1.2/bundles/redoc.standalone.js",
+    )
 
 @app.get("/")
 async def root():
