@@ -40,6 +40,8 @@ services:
       sh -c "
         apt-get update &&
         apt-get install -y git curl tesseract-ocr tesseract-ocr-deu poppler-utils ghostscript unpaper qpdf liblept5 libtesseract5 gcc g++ &&
+        rm -rf /tmp/repo || true &&
+        rm -rf /tmp/repo || true &&
         git clone https://github.com/PlogDev/digital_invoice.git /tmp/repo &&
         cp -r /tmp/repo/backend/* /app/ &&
         cd /app &&
@@ -76,4 +78,3 @@ services:
 volumes:
   postgres_data:
   backend_data:
-  
