@@ -102,29 +102,46 @@ const WindowsSMBManager: React.FC = () => {
     }
   };
 
-  const configureSMB = async () => {
-    setConfiguring(true);
-    setError(null);
-    setSuccess(null);
+const configureSMB = async () => {
+  setConfiguring(true);
+  setError(null);
+  setSuccess(null);
 
-    try {
-      const data = await smbService.configure(configForm); // ✅ Service verwenden
+  // VALIDATION hinzufügen:
+  if (!configForm.server || !configForm.share || !configForm.username || 
+      !configForm.password || !configForm.remote_base_path) {
+    setError('Bitte fülle alle Pflichtfelder aus (*, password, remote_base_path)');
+    setConfiguring(false);
+    return;
+  }
 
-      if (data.success) {
-        setSuccess(`✅ ${data.message} - ${data.total_pdfs} PDFs in ${data.backup_folders.length} Backup-Ordnern gefunden`);
-        setTimeout(() => setSuccess(null), 5000);
-        loadSMBStatus();
-      } else {
-        setError(data.detail || 'Konfiguration fehlgeschlagen');
-      }
-    } catch (err: any) {
-      // Besseres Error-Handling
-      const errorMsg = err.response?.data?.detail || err.message || 'Verbindungsfehler beim Konfigurieren';
-      setError(errorMsg);
-    } finally {
-      setConfiguring(false);
+  try {
+    console.log('🔧 Sende SMB-Config:', {
+      ...configForm,
+      password: '***' // Passwort nicht loggen
+    });
+
+    const data = await smbService.configure(configForm);
+
+    if (data.success) {
+      setSuccess(`✅ ${data.message} - ${data.total_pdfs || 0} PDFs in ${data.backup_folders?.length || 0} Backup-Ordnern gefunden`);
+      setTimeout(() => setSuccess(null), 5000);
+      loadSMBStatus();
+    } else {
+      setError(data.detail || 'Konfiguration fehlgeschlagen');
     }
-  };
+  } catch (err: any) {
+    console.error('❌ SMB Configure Full Error:', err);
+    
+    const errorMsg = err.response?.data?.detail || 
+                     err.response?.data?.message ||
+                     err.message || 
+                     'Verbindungsfehler beim Konfigurieren';
+    setError(errorMsg);
+  } finally {
+    setConfiguring(false);
+  }
+};
 
   const performSync = async () => {
     setLoading(true);
@@ -257,6 +274,7 @@ const WindowsSMBManager: React.FC = () => {
                 name="server"
                 value={configForm.server}
                 onChange={handleInputChange}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="192.168.66.7"
               />
@@ -271,6 +289,7 @@ const WindowsSMBManager: React.FC = () => {
                 name="share"
                 value={configForm.share}
                 onChange={handleInputChange}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Daten"
               />
@@ -285,6 +304,7 @@ const WindowsSMBManager: React.FC = () => {
                 name="username"
                 value={configForm.username}
                 onChange={handleInputChange}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="nsinger"
               />
@@ -300,6 +320,7 @@ const WindowsSMBManager: React.FC = () => {
                   name="password"
                   value={configForm.password}
                   onChange={handleInputChange}
+                  required
                   className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="••••••••"
                 />
@@ -326,6 +347,7 @@ const WindowsSMBManager: React.FC = () => {
                 name="domain"
                 value={configForm.domain}
                 onChange={handleInputChange}
+                required
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="PLOGSTIES"
               />
