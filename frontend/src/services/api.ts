@@ -13,7 +13,7 @@ import {
 } from '../types';
 
 // API-Basis-URL
-const API_BASE_URL = 'http://192.168.66.106:8081/api';
+const API_BASE_URL = 'http://:8081/api';
 
 // Axios-Instanz mit Basis-URL
 const apiClient = axios.create({
@@ -302,6 +302,52 @@ export const smbService = {
       throw error;
     }
   },
+};
+
+export const databaseService = {
+  /**
+   * Database-Statistiken abrufen
+   * @returns Promise mit Datenbankstatistiken
+   */
+  getStats: async () => {
+    try {
+      const response = await apiClient.get('/database/stats');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim Abrufen der Datenbankstatistiken:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Verfügbare Tabellen abrufen
+   * @returns Promise mit Tabellenliste
+   */
+  getTables: async () => {
+    try {
+      const response = await apiClient.get('/database/tables');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim Abrufen der Tabellen:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Daten einer bestimmten Tabelle abrufen
+   * @param tableName Name der Tabelle
+   * @param limit Maximale Anzahl Datensätze
+   * @returns Promise mit Tabellendaten
+   */
+  getTableData: async (tableName: string, limit: number = 100) => {
+    try {
+      const response = await apiClient.get(`/database/tables/${tableName}?limit=${limit}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Fehler beim Abrufen der Tabellendaten für ${tableName}:`, error);
+      throw error;
+    }
+  }
 };
 
 // Export erweitern
