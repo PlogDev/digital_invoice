@@ -21,7 +21,6 @@ services:
 
   backend:
     build:
-      context: https://github.com/PlogDev/digital_invoice.git
       dockerfile: backend/Dockerfile.portainer
     container_name: ocr_backend
     ports:
@@ -41,7 +40,6 @@ services:
 
   frontend:
     build:
-      context: https://github.com/PlogDev/digital_invoice.git
       dockerfile: frontend/Dockerfile.portainer
     container_name: ocr_frontend
     ports:
