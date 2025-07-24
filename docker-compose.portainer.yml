@@ -41,9 +41,9 @@ services:
         apt-get update &&
         apt-get install -y git curl tesseract-ocr tesseract-ocr-deu poppler-utils ghostscript unpaper qpdf liblept5 libtesseract5 gcc g++ &&
         rm -rf /tmp/repo || true &&
-        cd /tmp &&
-        git clone https://github.com/PlogDev/digital_invoice.git repo-backend &&
-        cp -r repo-backend/backend/* /app/ &&
+        git clone https://github.com/PlogDev/digital_invoice.git /app/repo || (rm -rf /app/repo && git clone https://github.com/PlogDev/digital_invoice.git /app/repo) &&
+        cp -r /app/repo/backend/* /app/ &&
+        rm -rf /app/repo &&
         cd /app &&
         pip install --no-cache-dir --upgrade pip &&
         pip install --no-cache-dir -r requirements.txt &&
