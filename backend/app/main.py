@@ -14,6 +14,7 @@ from .config.settings import API_PREFIX, CORS_ORIGINS
 from .database.postgres_connection import init_database
 from .routes.database import router as database_router  # NEU: Database-Routes
 from .routes.dokumente import router as dokumente_router
+from .routes.smb_routes import router as smb_router
 from .services.ocr_scheduler import ocr_scheduler
 
 # Logger konfigurieren
@@ -89,7 +90,8 @@ app.mount("/pdfs", StaticFiles(directory=str(PDF_DIR)), name="pdfs")
 
 # Routen registrieren
 app.include_router(dokumente_router, prefix=API_PREFIX)
-app.include_router(database_router, prefix=API_PREFIX)  # NEU: Database-Routes
+app.include_router(database_router, prefix=API_PREFIX)
+app.include_router(smb_router, prefix=API_PREFIX)
 
 
 @app.get("/")
