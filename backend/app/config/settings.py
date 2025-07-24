@@ -44,6 +44,9 @@ CORS_ORIGINS = [
     "http://localhost:8081",  # Backend
     "http://127.0.0.1:5173",
     "http://127.0.0.1:8081",
+    "http://localhost:3000",  # Falls Frontend auf Port 3000 läuft
+    "http://192.168.66.106:3000",  # NEU: Deine IP hinzufügen
+    "http://192.168.66.106:5173",  # NEU: Falls Vite auf 5173 läuft
 ]
 
 # PostgreSQL-Einstellungen (aus Environment oder Default)
