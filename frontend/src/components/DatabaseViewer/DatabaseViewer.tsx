@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Table, BarChart3, RefreshCw } from 'lucide-react';
-import { databaseService } from '../../services/api'; // ✅ Zentraler Service
 
 interface TableData {
   table_name: string;
@@ -26,6 +25,9 @@ const DatabaseViewer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // KORRIGIERT: API-URL auf Port 8081
+  const API_BASE_URL = 'http://192.168.66.106:8081/api';
+
   const availableTables = {
     dokumente: 'Dokumente',
     kategorien: 'Kategorien',
@@ -45,13 +47,13 @@ const DatabaseViewer: React.FC = () => {
   const loadStats = async () => {
     try {
       setLoading(true);
-      setError(null);
+      const response = await fetch(`${API_BASE_URL}/database/stats`);
+      if (!response.ok) throw new Error('Fehler beim Laden der Statistiken');
       
-      const data = await databaseService.getStats(); // ✅ Nutzt zentralen Service
+      const data = await response.json();
       setStats(data.stats);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unbekannter Fehler');
-      console.error('Database Stats Error:', err);
     } finally {
       setLoading(false);
     }
@@ -62,11 +64,13 @@ const DatabaseViewer: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      const data = await databaseService.getTableData(tableName); // ✅ Nutzt zentralen Service
+      const response = await fetch(`${API_BASE_URL}/database/tables/${tableName}`);
+      if (!response.ok) throw new Error(`Fehler beim Laden der Tabelle: ${response.statusText}`);
+      
+      const data = await response.json();
       setTableData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler beim Laden der Tabellendaten');
-      console.error('Table Data Error:', err);
     } finally {
       setLoading(false);
     }
@@ -198,20 +202,15 @@ const DatabaseViewer: React.FC = () => {
         </div>
       )}
 
-      {/* Tabellen-Übersicht */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-          <h2 className="text-lg font-medium text-gray-900 flex items-center">
-            <Table className="mr-2" />
-            Verfügbare Tabellen
-          </h2>
-        </div>
-        <div className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Tabellen-Auswahl */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-medium text-gray-900 mb-4">Tabelle auswählen</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Object.entries(availableTables).map(([key, label]) => (
             <button
               key={key}
               onClick={() => handleTableSelect(key)}
-              className={`p-4 rounded-lg border-2 transition-colors ${
+              className={`p-3 text-left rounded-lg border transition-colors ${
                 selectedTable === key
                   ? 'bg-[#004f7c]/10 border-[#004f7c]/20 text-[#004f7c]'
                   : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'
