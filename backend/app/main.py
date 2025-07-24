@@ -1,3 +1,4 @@
+# app/main.py
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -62,21 +63,36 @@ async def lifespan(app: FastAPI):
         logger.error(f"Fehler beim Stoppen des OCR-Schedulers: {e}")
 
 
-# FastAPI-App erstellen
+# FastAPI-App erstellen - FIX für Swagger UI
 app = FastAPI(
     title="OCR-Dokumentenverwaltungssystem",
     description="API für das OCR-basierte Dokumentenverwaltungssystem mit SMB-Integration",
     version="0.2.0",
     lifespan=lifespan,
-    docs_url="/docs",  # Explizit setzen
-    redoc_url="/redoc",  # Alternative Docs
-    openapi_url="/openapi.json"  # OpenAPI Schema
+    # ✅ FIX: Swagger UI CDN konfigurieren für korrekte Asset-Loading
+    docs_url="/docs",  
+    redoc_url="/redoc",  
+    openapi_url="/openapi.json",
+    # NEU: Swagger UI/ReDoc mit CDN-URLs konfigurieren
+    swagger_ui_parameters={
+        "tryItOutEnabled": True,
+        "displayOperationId": False,
+        "defaultModelsExpandDepth": 2,
+        "defaultModelExpandDepth": 2,
+        "docExpansion": "list",
+        "persistAuthorization": True,
+    }
 )
 
-# CORS-Middleware hinzufügen
+# CORS-Middleware hinzufügen - ERWEITERT für Swagger UI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=CORS_ORIGINS + [
+        "http://localhost:8081",
+        "http://192.168.66.101:8081", 
+        "https://cdn.jsdelivr.net",    # ✅ FIX: Swagger UI Assets
+        "https://unpkg.com"            # ✅ FIX: Swagger UI Assets
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -117,9 +133,9 @@ async def root():
         "database": "PostgreSQL",
         "docs": "/docs",
         "redoc": "/redoc",
-        "debug_routes": "/debug/routes",  # NEU
+        "debug_routes": "/debug/routes",
         "database_viewer": "/api/database/stats", 
-        "smb_status": "/api/dokumente/smb/status",  # NEU
+        "smb_status": "/api/dokumente/smb/status",
         "ocr_scheduler": {
             "running": ocr_scheduler.running,
             "processed_files": len(ocr_scheduler.processed_files)
@@ -137,6 +153,15 @@ async def force_ocr_check():
     }
 
 
-# Für die direkte Ausführung
+# Für die direkte Ausführung - FIX: Port 8081 wie in Docker
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)
+    # ✅ FIX: Port auf 8081 wie in docker-compose
+    uvicorn.run(
+        "app.main:app", 
+        host="0.0.0.0", 
+        port=8081,  # Geändert von 8080 auf 8081
+        reload=True,
+        # ✅ FIX: Zusätzliche Uvicorn-Konfiguration für bessere Swagger UI
+        log_level="info",
+        access_log=True
+    )
