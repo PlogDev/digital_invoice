@@ -554,51 +554,82 @@ class WindowsSMBService:
                     test_results["test_file_used"] = f"{test_pdf['folder']}/{test_pdf['filename']}"
                     logger.info(f"📄 Test-PDF gefunden: {test_results['test_file_used']}")
                     
-                    # 3. PDF in TEST-Ordner kopieren
+                    # 3. PDF in TEST-Ordner kopieren (mit smbclient get/put)
                     logger.info("📋 Step 3: Kopiere PDF in TEST-Ordner...")
                     pdf_folder = test_pdf['folder']
                     pdf_filename = test_pdf['filename']
                     
-                    # Zur Source navigieren und Datei kopieren
-                    copy_commands = f'cd "{remote_base}/{pdf_folder}"; put "{pdf_filename}" "../TEST_WRITE_PERMISSIONS/{pdf_filename}"'
+                    # Erstmal: PDF aus Backup-Ordner "downloaden" und dann "uploaden"
+                    # Alternative: copy mit vollem Pfad versuchen
+                    source_folder_unc = f"{server_unc}/{remote_base}/{pdf_folder}"
+                    copy_commands = f'get "{pdf_filename}" /tmp/temp_test_pdf.pdf'
                     
-                    cmd_copy = [
-                        "smbclient", server_unc, "-U", user_string,
+                    cmd_get = [
+                        "smbclient", source_folder_unc, "-U", user_string,
                         "-c", copy_commands, "-t", "30"
                     ]
                     
-                    result_copy = subprocess.run(
-                        cmd_copy,
+                    result_get = subprocess.run(
+                        cmd_get,
                         input=config["password"] + "\n", 
                         capture_output=True, text=True, timeout=35
                     )
                     
-                    logger.info(f"📊 Copy result: returncode={result_copy.returncode}")
-                    logger.info(f"📊 Copy stderr: {result_copy.stderr}")
+                    logger.info(f"📊 Get result: returncode={result_get.returncode}")
                     
-                    if result_copy.returncode == 0:
-                        test_results["operations"]["copy_file"] = True
-                        logger.info("✅ PDF erfolgreich kopiert")
+                    if result_get.returncode == 0 and os.path.exists("/tmp/temp_test_pdf.pdf"):
+                        logger.info("✅ PDF temporär heruntergeladen")
                         
-                        # 4. PDF wieder löschen
-                        logger.info("🗑️ Step 4: Lösche Test-PDF...")
+                        # Jetzt in TEST-Ordner hochladen
+                        test_folder_unc = f"{server_unc}/{remote_base}/TEST_WRITE_PERMISSIONS"
+                        put_commands = f'put /tmp/temp_test_pdf.pdf "{pdf_filename}"'
                         
-                        cmd_delete = [
-                            "smbclient", server_unc, "-U", user_string,
-                            "-c", f'cd "{test_folder_path}"; del "{pdf_filename}"', "-t", "15"
+                        cmd_put = [
+                            "smbclient", test_folder_unc, "-U", user_string,
+                            "-c", put_commands, "-t", "30"
                         ]
                         
-                        result_delete = subprocess.run(
-                            cmd_delete,
+                        result_put = subprocess.run(
+                            cmd_put,
                             input=config["password"] + "\n",
-                            capture_output=True, text=True, timeout=20
+                            capture_output=True, text=True, timeout=35
                         )
                         
-                        if result_delete.returncode == 0:
-                            test_results["operations"]["delete_file"] = True
-                            logger.info("✅ Test-PDF erfolgreich gelöscht")
+                        # Temp-Datei aufräumen
+                        try:
+                            os.unlink("/tmp/temp_test_pdf.pdf")
+                        except:
+                            pass
+                        
+                        logger.info(f"📊 Put result: returncode={result_put.returncode}")
+                        
+                        if result_put.returncode == 0:
+                            test_results["operations"]["copy_file"] = True
+                            logger.info("✅ PDF erfolgreich in TEST-Ordner kopiert")
+                            
+                            # 4. PDF wieder löschen
+                            logger.info("🗑️ Step 4: Lösche Test-PDF...")
+                            
+                            cmd_delete = [
+                                "smbclient", test_folder_unc, "-U", user_string,
+                                "-c", f'del "{pdf_filename}"', "-t", "15"
+                            ]
+                            
+                            result_delete = subprocess.run(
+                                cmd_delete,
+                                input=config["password"] + "\n",
+                                capture_output=True, text=True, timeout=20
+                            )
+                            
+                            if result_delete.returncode == 0:
+                                test_results["operations"]["delete_file"] = True
+                                logger.info("✅ Test-PDF erfolgreich gelöscht")
+                            else:
+                                logger.error(f"❌ PDF-Löschen fehlgeschlagen: {result_delete.stderr}")
+                        else:
+                            logger.error(f"❌ PDF-Upload in TEST-Ordner fehlgeschlagen: {result_put.stderr}")
                     else:
-                        logger.error(f"❌ PDF-Kopieren fehlgeschlagen: {result_copy.stderr}")
+                        logger.error(f"❌ PDF-Download fehlgeschlagen: {result_get.stderr}")
                 else:
                     logger.warning("⚠️ Keine Test-PDF in Backup-Ordnern gefunden")
                 
@@ -649,6 +680,7 @@ class WindowsSMBService:
     def _find_test_pdf_for_permissions(self) -> Optional[Dict[str, str]]:
         """
         Findet eine echte PDF-Datei in den Backup-Ordnern für den Permissions-Test.
+        EINMALIGE Suche ohne doppelte Logs.
         """
         try:
             config = self.connection_config
@@ -685,7 +717,7 @@ class WindowsSMBService:
                             if '.pdf' in line.lower() and ' A ' in line:  # A = normale Datei
                                 parts = line.split()
                                 if parts and parts[0].lower().endswith('.pdf'):
-                                    logger.info(f"📄 Test-PDF gefunden: {folder}/{parts[0]}")
+                                    # NUR EINMAL loggen!
                                     return {
                                         "filename": parts[0],
                                         "folder": folder
@@ -701,6 +733,6 @@ class WindowsSMBService:
         except Exception as e:
             logger.error(f"Fehler bei PDF-Suche für Permissions-Test: {e}")
             return None
-                        
+                                
 # Globale Service-Instanz
 windows_smb_service = WindowsSMBService()
