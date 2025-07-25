@@ -556,11 +556,11 @@ class WindowsSMBService:
                     
                     # 3. PDF in TEST-Ordner kopieren
                     logger.info("📋 Step 3: Kopiere PDF in TEST-Ordner...")
-                    source_pdf_path = f"/{remote_base}/{test_pdf['folder']}/{test_pdf['filename']}"
-                    test_pdf_path = f"{test_folder_path}/{test_pdf['filename']}"
+                    pdf_folder = test_pdf['folder']
+                    pdf_filename = test_pdf['filename']
                     
                     # Zur Source navigieren und Datei kopieren
-                    copy_commands = f'cd "{remote_base}/{test_pdf['folder']}"; put "{test_pdf['filename']}" "../TEST_WRITE_PERMISSIONS/{test_pdf['filename']}"'
+                    copy_commands = f'cd "{remote_base}/{pdf_folder}"; put "{pdf_filename}" "../TEST_WRITE_PERMISSIONS/{pdf_filename}"'
                     
                     cmd_copy = [
                         "smbclient", server_unc, "-U", user_string,
@@ -585,7 +585,7 @@ class WindowsSMBService:
                         
                         cmd_delete = [
                             "smbclient", server_unc, "-U", user_string,
-                            "-c", f'cd "{test_folder_path}"; del "{test_pdf['filename']}"', "-t", "15"
+                            "-c", f'cd "{test_folder_path}"; del "{pdf_filename}"', "-t", "15"
                         ]
                         
                         result_delete = subprocess.run(
@@ -701,6 +701,6 @@ class WindowsSMBService:
         except Exception as e:
             logger.error(f"Fehler bei PDF-Suche für Permissions-Test: {e}")
             return None
-                
+                        
 # Globale Service-Instanz
 windows_smb_service = WindowsSMBService()
