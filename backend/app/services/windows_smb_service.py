@@ -515,11 +515,10 @@ class WindowsSMBService:
             logger.info("📋 Step 1: Erstelle Credentials-Datei...")
             # 1. Credentials-Datei erstellen
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.creds') as f:
-                if config["domain"]:
-                    f.write(f"username={config['domain']}\\{config['username']}\n")
-                else:
-                    f.write(f"username={config['username']}\n")
+                f.write(f"username={config['username']}\n")  # NUR Username, KEINE Domain!
                 f.write(f"password={config['password']}\n")
+                if config["domain"]:
+                    f.write(f"domain={config['domain']}\n")
                 creds_file = f.name
             
             logger.info(f"✅ Credentials-Datei erstellt: {creds_file}")
