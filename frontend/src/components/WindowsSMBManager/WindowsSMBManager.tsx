@@ -63,6 +63,8 @@ const WindowsSMBManager: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [autoSync, setAutoSync] = useState(false);
   const [autoSyncInterval, setAutoSyncInterval] = useState<number | null>(null);
+  const [writeTestResults, setWriteTestResults] = useState<any>(null);
+  const [testingWrite, setTestingWrite] = useState(false);
 
   // const API_BASE_URL = 'http://localhost:8081/api';
 
@@ -183,6 +185,35 @@ const configureSMB = async () => {
       setError(errorMsg);
     }
   };
+
+  const testWritePermissions = async () => {
+    setTestingWrite(true);
+    setError(null);
+    setWriteTestResults(null);
+
+    try {
+      const data = await smbService.testWritePermissions();
+
+      if (data.success) {
+        setWriteTestResults(data);
+        
+        if (data.write_access) {
+          setSuccess('✅ Vollzugriff bestätigt! Server-seitige Dateiverwaltung möglich.');
+        } else {
+          setSuccess('⚠️ Nur Lesezugriff. Download-basierte Verarbeitung wird verwendet.');
+        }
+        setTimeout(() => setSuccess(null), 5000);
+      } else {
+        setError('Test fehlgeschlagen');
+      }
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Fehler beim Write-Test';
+      setError(errorMsg);
+    } finally {
+      setTestingWrite(false);
+    }
+  }; 
+
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -500,6 +531,81 @@ const configureSMB = async () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {smbStatus.configured && smbStatus.connection_active && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium text-gray-900">Schreibberechtigung testen</h2>
+            <button
+              onClick={testWritePermissions}
+              disabled={testingWrite}
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              {testingWrite ? (
+                <>
+                  <RefreshCw className="animate-spin h-4 w-4 mr-2" />
+                  Teste...
+                </>
+              ) : (
+                <>
+                  <Settings className="h-4 w-4 mr-2" />
+                  Schreibrechte testen
+                </>
+              )}
+            </button>
+          </div>
+          
+          <p className="text-sm text-gray-600 mb-4">
+            Testet ob PDFs direkt auf dem Server verwaltet oder lokal heruntergeladen werden müssen.
+          </p>
+          
+          {writeTestResults && (
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center mb-3">
+                {writeTestResults.write_access ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
+                )}
+                <span className={`font-medium ${
+                  writeTestResults.write_access ? 'text-green-800' : 'text-yellow-800'
+                }`}>
+                  {writeTestResults.write_access ? 'Vollzugriff verfügbar' : 'Nur Lesezugriff'}
+                </span>
+              </div>
+              
+              <div className="text-sm text-gray-700 mb-3">
+                <strong>Getestete Datei:</strong> {writeTestResults.test_details?.test_file_used}
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs mb-3">
+                {Object.entries(writeTestResults.operations).map(([op, success]) => (
+                  <div key={op} className={`flex items-center ${success ? 'text-green-600' : 'text-red-600'}`}>
+                    {success ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+                    {op.replace('_', ' ')}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="bg-blue-50 rounded p-3">
+                <div className="text-sm font-medium text-blue-800 mb-1">
+                  📋 Empfohlene Strategie: {writeTestResults.recommendation?.strategy}
+                </div>
+                <div className="text-sm text-blue-700">
+                  {writeTestResults.recommendation?.description}
+                </div>
+                {writeTestResults.recommendation?.benefits && (
+                  <ul className="text-xs text-blue-600 mt-2 list-disc list-inside">
+                    {writeTestResults.recommendation.benefits.map((benefit: string, index: number) => (
+                      <li key={index}>{benefit}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

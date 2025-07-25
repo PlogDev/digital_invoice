@@ -302,6 +302,19 @@ export const smbService = {
       throw error;
     }
   },
+
+  /**
+   * NEU: Testet Schreibberechtigung auf SMB-Share
+   */
+  testWritePermissions: async (): Promise<any> => {
+    try {
+      const response = await apiClient.post('/dokumente/smb/test-write-permissions');
+      return response.data;
+    } catch (error) {
+      console.error('Fehler beim SMB Write-Test:', error);
+      throw error;
+    }
+  },
 };
 
 // Export erweitern

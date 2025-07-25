@@ -7,6 +7,7 @@ Speziell für PDMS_Anhänge_Backup mit rekursivem Ordner-Scanning
 import logging
 import os
 import re
+import subprocess
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -481,6 +482,198 @@ class WindowsSMBService:
         logger.info(f"📥 Download abgeschlossen: {download_results['successful']}/{download_results['attempted']} erfolgreich")
         
         return {"success": True, "results": download_results}
+
+    def test_smb_write_permissions(self) -> Dict[str, any]:
+        """
+        Testet Schreibberechtigung auf dem SMB-Share durch:
+        1. TEST-Ordner anlegen
+        2. Eine PDF aus einem Backup-Ordner in TEST kopieren/verschieben
+        3. Aufräumen
+        
+        Returns:
+            {
+                "success": bool,
+                "write_access": bool,
+                "operations": {
+                    "create_folder": bool,
+                    "copy_file": bool,
+                    "move_file": bool,
+                    "delete_file": bool,
+                    "delete_folder": bool
+                },
+                "test_file_used": str,
+                "message": str,
+                "error": str
+            }
+        """
+        if not self.connection_config:
+            return {"success": False, "error": "Keine SMB-Verbindung konfiguriert"}
+        
+        logger.info("🧪 Starte SMB-Schreibrechte-Test...")
+        
+        config = self.connection_config
+        test_results = {
+            "success": False,
+            "write_access": False,
+            "operations": {
+                "create_folder": False,
+                "copy_file": False,
+                "move_file": False,
+                "delete_file": False,
+                "delete_folder": False
+            },
+            "test_file_used": "",
+            "message": "",
+            "error": ""
+        }
+        
+        import subprocess
+        import tempfile
+        
+        try:
+            # 1. Credentials-Datei erstellen
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.creds') as f:
+                if config["domain"]:
+                    f.write(f"username={config['domain']}\\{config['username']}\n")
+                else:
+                    f.write(f"username={config['username']}\n")
+                f.write(f"password={config['password']}\n")
+                creds_file = f.name
+            
+            try:
+                base_unc = f"//{config['server']}/{config['share']}/{config['remote_base_path'].replace(chr(92), '/')}"
+                test_folder_name = "TEST_WRITE_PERMISSIONS"
+                test_folder_unc = f"{base_unc}/{test_folder_name}"
+                
+                # 2. Erst eine Test-PDF finden
+                logger.info("🔍 Suche Test-PDF in Backup-Ordnern...")
+                test_pdf_info = self._find_test_pdf_file(creds_file)
+                
+                if not test_pdf_info:
+                    test_results["error"] = "Keine PDF-Datei in Backup-Ordnern gefunden"
+                    return test_results
+                
+                test_results["test_file_used"] = f"{test_pdf_info['folder']}/{test_pdf_info['filename']}"
+                logger.info(f"📄 Verwende Test-PDF: {test_results['test_file_used']}")
+                
+                # 3. TEST-Ordner anlegen
+                logger.info(f"📁 Erstelle TEST-Ordner: {test_folder_name}")
+                cmd = ["smbclient", base_unc, "-A", creds_file, "-c", f"mkdir {test_folder_name}"]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0 or "directory exists" in result.stderr.lower():
+                    test_results["operations"]["create_folder"] = True
+                    logger.info("✅ TEST-Ordner erstellt/existiert")
+                    
+                    # 4. PDF in TEST-Ordner kopieren
+                    logger.info("📋 Kopiere PDF in TEST-Ordner...")
+                    source_unc = f"{base_unc}/{test_pdf_info['folder']}"
+                    
+                    # Datei erst lokal downloaden, dann in TEST hochladen (da direkte SMB-Copy kompliziert ist)
+                    temp_local_file = f"/tmp/test_smb_{test_pdf_info['filename']}"
+                    
+                    # Download von Quell-Ordner
+                    cmd_download = ["smbclient", source_unc, "-A", creds_file, "-c", f"get '{test_pdf_info['filename']}' '{temp_local_file}'"]
+                    result_download = subprocess.run(cmd_download, capture_output=True, text=True, timeout=60)
+                    
+                    if result_download.returncode == 0 and os.path.exists(temp_local_file):
+                        # Upload in TEST-Ordner
+                        cmd_upload = ["smbclient", test_folder_unc, "-A", creds_file, "-c", f"put '{temp_local_file}' '{test_pdf_info['filename']}'"]
+                        result_upload = subprocess.run(cmd_upload, capture_output=True, text=True, timeout=60)
+                        
+                        if result_upload.returncode == 0:
+                            test_results["operations"]["copy_file"] = True
+                            logger.info("✅ PDF erfolgreich in TEST-Ordner kopiert")
+                            
+                            # 5. Kopierte Datei wieder löschen
+                            logger.info("🗑️ Lösche Test-PDF aus TEST-Ordner...")
+                            cmd_delete = ["smbclient", test_folder_unc, "-A", creds_file, "-c", f"del '{test_pdf_info['filename']}'"]
+                            result_delete = subprocess.run(cmd_delete, capture_output=True, text=True, timeout=30)
+                            
+                            if result_delete.returncode == 0:
+                                test_results["operations"]["delete_file"] = True
+                                logger.info("✅ Test-PDF erfolgreich gelöscht")
+                        
+                        # Temp-Datei aufräumen
+                        try:
+                            os.unlink(temp_local_file)
+                        except:
+                            pass
+                    
+                    # 6. TEST-Ordner löschen
+                    logger.info("🗑️ Lösche TEST-Ordner...")
+                    cmd_rmdir = ["smbclient", base_unc, "-A", creds_file, "-c", f"rmdir {test_folder_name}"]
+                    result_rmdir = subprocess.run(cmd_rmdir, capture_output=True, text=True, timeout=30)
+                    
+                    if result_rmdir.returncode == 0:
+                        test_results["operations"]["delete_folder"] = True
+                        logger.info("✅ TEST-Ordner erfolgreich gelöscht")
+                
+                # 7. Ergebnis auswerten
+                write_operations = ["create_folder", "copy_file", "delete_file"]
+                write_access = all(test_results["operations"][op] for op in write_operations)
+                
+                test_results["write_access"] = write_access
+                test_results["success"] = True
+                
+                if write_access:
+                    test_results["message"] = "✅ Vollständige Schreibberechtigung! Dateien können direkt auf dem Server verwaltet werden."
+                    logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF")
+                else:
+                    failed_ops = [op for op in write_operations if not test_results["operations"][op]]
+                    test_results["message"] = f"⚠️ Eingeschränkte Berechtigung. Fehlgeschlagen: {', '.join(failed_ops)}"
+                    logger.warning(f"⚠️ SMB-Schreibrechte-Test: Eingeschränkt - {failed_ops}")
+                    
+            finally:
+                os.unlink(creds_file)
+                
+        except subprocess.TimeoutExpired:
+            test_results["error"] = "Timeout beim SMB-Zugriff"
+        except FileNotFoundError:
+            test_results["error"] = "smbclient nicht installiert"
+        except Exception as e:
+            test_results["error"] = f"Test-Fehler: {str(e)}"
+            logger.error(f"❌ SMB-Schreibrechte-Test Fehler: {e}")
+        
+        return test_results
+
+    def _find_test_pdf_file(self, creds_file: str) -> Optional[Dict[str, str]]:
+        try:
+            config = self.connection_config
+            base_unc = f"//{config['server']}/{config['share']}/{config['remote_base_path'].replace(chr(92), '/')}"
+            
+            # Backup-Ordner finden
+            cmd = ["smbclient", base_unc, "-A", creds_file, "-c", "ls"]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                return None
+            
+            backup_folders = self._parse_backup_folders(result.stdout)
+            
+            # In jedem Backup-Ordner nach PDF suchen
+            for folder in backup_folders[:3]:  # Nur erste 3 Ordner prüfen
+                folder_unc = f"{base_unc}/{folder}"
+                
+                cmd = ["smbclient", folder_unc, "-A", creds_file, "-c", "ls *.pdf"]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        line = line.strip()
+                        if '.pdf' in line.lower() and ' A ' in line:
+                            parts = line.split()
+                            if parts and parts[0].lower().endswith('.pdf'):
+                                return {
+                                    "filename": parts[0],
+                                    "folder": folder
+                                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Suchen der Test-PDF: {e}")
+            return None
 
 # Globale Service-Instanz
 windows_smb_service = WindowsSMBService()

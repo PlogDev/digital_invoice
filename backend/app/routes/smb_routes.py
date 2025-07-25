@@ -426,3 +426,102 @@ async def disconnect_smb():
     except Exception as e:
         logger.error(f"Fehler beim Trennen der SMB-Verbindung: {e}")
         raise HTTPException(status_code=500, detail="Fehler beim Trennen der Verbindung")
+    
+@router.post("/smb/test-write-permissions")
+async def test_smb_write_permissions():
+    """
+    Testet die Schreibberechtigung auf dem SMB-Share.
+    
+    Führt folgende Tests durch:
+    1. TEST-Ordner anlegen
+    2. PDF aus Backup-Ordner in TEST kopieren  
+    3. Test-PDF löschen
+    4. TEST-Ordner löschen
+    
+    Returns:
+        {
+            "success": bool,
+            "write_access": bool,
+            "operations": {...},
+            "message": str,
+            "recommendation": str
+        }
+    """
+    logger.info("🧪 SMB Write-Permission Test aufgerufen")
+    
+    try:
+        from ..services.windows_smb_service import windows_smb_service
+        
+        if not windows_smb_service.connection_config:
+            raise HTTPException(status_code=400, detail="Keine SMB-Verbindung konfiguriert")
+        
+        test_result = windows_smb_service.test_smb_write_permissions()
+        
+        if test_result["success"]:
+            # Empfehlung basierend auf Schreibrechten
+            if test_result["write_access"]:
+                recommendation = {
+                    "strategy": "direct_management",
+                    "description": "📁 Direktes Datei-Management auf Server möglich",
+                    "benefits": [
+                        "PDFs können direkt in 'verarbeitet' Unterordner verschoben werden",
+                        "Kein lokaler Speicherplatz nötig", 
+                        "Automatische Archivierung auf Server",
+                        "Bessere Performance bei großen Dateien"
+                    ],
+                    "workflow": "Scan → Verarbeitung → Verschieben in Unterordner"
+                }
+            else:
+                recommendation = {
+                    "strategy": "download_management", 
+                    "description": "📥 Download-basiertes Management nötig",
+                    "benefits": [
+                        "Lokale Kopien für schnelle Verarbeitung",
+                        "Unabhängig von Netzwerk-Stabilität",
+                        "Backup lokal verfügbar"
+                    ],
+                    "workflow": "Scan → Download → Verarbeitung → Optional: Upload zurück"
+                }
+            
+            return {
+                "success": True,
+                "write_access": test_result["write_access"],
+                "operations": test_result["operations"],
+                "test_details": {
+                    "test_file_used": test_result["test_file_used"],
+                    "message": test_result["message"]
+                },
+                "recommendation": recommendation
+            }
+        else:
+            raise HTTPException(status_code=500, detail=test_result["error"])
+            
+    except ImportError:
+        # Mock für Development
+        return {
+            "success": True,
+            "write_access": True,  # Optimistisch für Tests
+            "operations": {
+                "create_folder": True,
+                "copy_file": True,
+                "delete_file": True,
+                "delete_folder": True
+            },
+            "test_details": {
+                "test_file_used": "backup_2024_01/rechnung_test.pdf",
+                "message": "Mock-Test: Vollständige Schreibberechtigung simuliert"
+            },
+            "recommendation": {
+                "strategy": "direct_management",
+                "description": "📁 Direktes Datei-Management auf Server möglich (Mock)",
+                "benefits": [
+                    "PDFs können direkt in 'verarbeitet' Unterordner verschoben werden",
+                    "Kein lokaler Speicherplatz nötig"
+                ]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim SMB Write-Test: {e}")
+        raise HTTPException(status_code=500, detail=f"Write-Test fehlgeschlagen: {str(e)}")
