@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config.settings import API_PREFIX, CORS_ORIGINS
 from .database.postgres_connection import init_database
-from .routes.database import router as database_router
+from .routes.database import router as database_router  # NEU: Database-Routes
 from .routes.dokumente import router as dokumente_router
 from .routes.smb_routes import router as smb_router
 from .services.ocr_scheduler import ocr_scheduler
@@ -109,20 +109,20 @@ app.include_router(dokumente_router, prefix=API_PREFIX)
 app.include_router(database_router, prefix=API_PREFIX)
 app.include_router(smb_router, prefix=API_PREFIX)  # SMB-Router hinzufügen
 
-# ✅ HARDCORE FIX: Eigene Swagger UI mit funktionierenden CDN-Links
+# ✅ KORRIGIERTE Swagger UI und ReDoc
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 
 
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """Custom Swagger UI mit lokalen Assets als Fallback."""
+    """Korrigierte Swagger UI."""
     return HTMLResponse(content="""
 <!DOCTYPE html>
 <html>
 <head>
     <title>OCR-Dokumentenverwaltung API</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
     <style>
         html { box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }
         *, *:before, *:after { box-sizing: inherit; }
@@ -131,48 +131,32 @@ async def custom_swagger_ui_html():
 </head>
 <body>
     <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
     <script>
-        // Fallback für SwaggerUIBundle wenn CDN nicht lädt
-        window.swaggerUIFallback = function() {
+        try {
+            SwaggerUIBundle({
+                url: '/openapi.json',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.presets.standalone
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout"
+            });
+        } catch(error) {
             document.getElementById('swagger-ui').innerHTML = `
                 <div style="padding: 2rem; text-align: center; font-family: Arial;">
-                    <h1>🔧 Swagger UI Laden...</h1>
-                    <p>OpenAPI Dokumentation wird geladen. Falls das nicht funktioniert:</p>
-                    <ul style="text-align: left; display: inline-block;">
-                        <li><a href="/openapi.json">OpenAPI JSON Schema</a></li>
-                        <li><a href="/redoc">ReDoc Alternative</a></li>
-                    </ul>
+                    <h1>⚠️ Swagger UI Fehler</h1>
+                    <p>JavaScript-Fehler: ${error.message}</p>
+                    <p><a href="/docs-simple">Zur einfachen API-Übersicht</a></p>
+                    <p><a href="/openapi.json">OpenAPI JSON herunterladen</a></p>
                 </div>
             `;
-        };
-
-        // Versuche CDN zu laden
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js';
-        script.onload = function() {
-            try {
-                SwaggerUIBundle({
-                    url: '/openapi.json',
-                    dom_id: '#swagger-ui',
-                    deepLinking: true,
-                    presets: [
-                        SwaggerUIBundle.presets.apis,
-                        SwaggerUIBundle.presets.standalone
-                    ],
-                    plugins: [
-                        SwaggerUIBundle.plugins.DownloadUrl
-                    ],
-                    layout: "StandaloneLayout"
-                });
-            } catch(e) {
-                swaggerUIFallback();
-            }
-        };
-        script.onerror = swaggerUIFallback;
-        document.head.appendChild(script);
-        
-        // Fallback Timer
-        setTimeout(swaggerUIFallback, 5000);
+        }
     </script>
 </body>
 </html>
@@ -180,7 +164,7 @@ async def custom_swagger_ui_html():
 
 @app.get("/redoc", include_in_schema=False)
 async def custom_redoc_html():
-    """Custom ReDoc mit Fallback."""
+    """Korrigierte ReDoc."""
     return HTMLResponse(content="""
 <!DOCTYPE html>
 <html>
@@ -188,49 +172,32 @@ async def custom_redoc_html():
     <title>OCR-Dokumentenverwaltung API - ReDoc</title>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 0; font-family: Arial; }
-        #redoc-container { min-height: 100vh; }
-        .loading { text-align: center; padding: 2rem; }
+        body { margin: 0; padding: 0; }
+        redoc { display: block; }
     </style>
 </head>
 <body>
-    <div id="redoc-container">
-        <div class="loading">
-            <h1>🔧 ReDoc wird geladen...</h1>
-            <p>Falls das nicht funktioniert: <a href="/openapi.json">OpenAPI JSON</a></p>
-        </div>
-    </div>
+    <redoc spec-url='/openapi.json'></redoc>
+    <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0/bundles/redoc.standalone.js"></script>
     <script>
-        // Fallback-Inhalt
-        window.redocFallback = function() {
-            document.getElementById('redoc-container').innerHTML = `
-                <div style="padding: 2rem; text-align: center;">
-                    <h1>⚠️ ReDoc konnte nicht geladen werden</h1>
-                    <p>Alternativen:</p>
-                    <ul style="text-align: left; display: inline-block;">
-                        <li><a href="/docs">Swagger UI</a></li>
-                        <li><a href="/openapi.json">OpenAPI JSON Schema</a></li>
-                    </ul>
-                </div>
-            `;
-        };
-
-        // ReDoc Script laden
-        const script = document.createElement('script');
-        script.src = 'https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js';
-        script.onload = function() {
-            try {
-                Redoc.init('/openapi.json', {}, document.getElementById('redoc-container'));
-            } catch(e) {
-                redocFallback();
+        // Fallback falls ReDoc nicht lädt
+        setTimeout(function() {
+            if (!document.querySelector('redoc').innerHTML.trim()) {
+                document.body.innerHTML = `
+                    <div style="padding: 2rem; text-align: center; font-family: Arial;">
+                        <h1>⚠️ ReDoc konnte nicht geladen werden</h1>
+                        <p>Alternativen:</p>
+                        <ul style="text-align: left; display: inline-block;">
+                            <li><a href="/docs">Swagger UI</a></li>
+                            <li><a href="/docs-simple">Einfache API-Übersicht</a></li>
+                            <li><a href="/openapi.json">OpenAPI JSON</a></li>
+                        </ul>
+                    </div>
+                `;
             }
-        };
-        script.onerror = redocFallback;
-        document.head.appendChild(script);
-        
-        // Fallback Timer
-        setTimeout(redocFallback, 5000);
+        }, 3000);
     </script>
 </body>
 </html>
