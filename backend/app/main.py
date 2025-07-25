@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
         logger.error(f"Fehler beim Stoppen des OCR-Schedulers: {e}")
 
 
-# FastAPI-App erstellen - HARDCORE FIX für Swagger UI
+# FastAPI-App erstellen - FIX für OpenAPI-Version
 app = FastAPI(
     title="OCR-Dokumentenverwaltungssystem",
     description="API für das OCR-basierte Dokumentenverwaltungssystem mit SMB-Integration",
@@ -71,7 +71,9 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=None,  # ✅ FIX: Deaktivieren, wir erstellen eigene
     redoc_url=None,  # ✅ FIX: Deaktivieren, wir erstellen eigene
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    # ✅ FIX: OpenAPI-Version explizit setzen
+    openapi_version="3.0.2"
 )
 
 # CORS-Middleware hinzufügen - VEREINFACHT
@@ -211,44 +213,93 @@ async def simple_api_docs():
     <title>OCR-Dokumentenverwaltung API</title>
     <style>
         body { font-family: Arial; margin: 2rem; line-height: 1.6; }
-        .endpoint { margin: 1rem 0; padding: 1rem; border: 1px solid #ddd; }
-        .method { font-weight: bold; color: #fff; padding: 0.2rem 0.5rem; border-radius: 3px; }
+        .endpoint { margin: 1rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 5px; }
+        .method { font-weight: bold; color: #fff; padding: 0.2rem 0.5rem; border-radius: 3px; margin-right: 0.5rem; }
         .get { background: #61affe; }
         .post { background: #49cc90; }
         .put { background: #fca130; }
         .delete { background: #f93e3e; }
+        code { background: #f5f5f5; padding: 0.2rem 0.4rem; border-radius: 3px; }
+        .test-btn { background: #007bff; color: white; padding: 0.5rem 1rem; border: none; border-radius: 3px; cursor: pointer; margin-left: 1rem; }
+        .test-btn:hover { background: #0056b3; }
     </style>
 </head>
 <body>
     <h1>🔧 OCR-Dokumentenverwaltung API</h1>
-    <p><strong>OpenAPI Schema:</strong> <a href="/openapi.json">/openapi.json</a></p>
+    <p><strong>Server:</strong> http://192.168.66.106:8081</p>
+    <p><strong>OpenAPI Schema:</strong> <a href="/openapi.json" target="_blank">/openapi.json</a></p>
     
-    <h2>📁 Hauptendpunkte:</h2>
+    <h2>📁 Dokumente:</h2>
     <div class="endpoint">
-        <span class="method get">GET</span> <code>/api/dokumente/</code> - Alle Dokumente
+        <span class="method get">GET</span> <code>/api/dokumente/</code> - Alle Dokumente abrufen
+        <button class="test-btn" onclick="testEndpoint('/api/dokumente/', 'GET')">Testen</button>
     </div>
     <div class="endpoint">
         <span class="method get">GET</span> <code>/api/dokumente/{id}</code> - Einzelnes Dokument
+    </div>
+    
+    <h2>🌐 SMB Windows Server:</h2>
+    <div class="endpoint">
+        <span class="method get">GET</span> <code>/api/dokumente/smb/test</code> - SMB-Router Test
+        <button class="test-btn" onclick="testEndpoint('/api/dokumente/smb/test', 'GET')">Testen</button>
     </div>
     <div class="endpoint">
         <span class="method post">POST</span> <code>/api/dokumente/smb/configure</code> - SMB konfigurieren
     </div>
     <div class="endpoint">
         <span class="method get">GET</span> <code>/api/dokumente/smb/status</code> - SMB Status
+        <button class="test-btn" onclick="testEndpoint('/api/dokumente/smb/status', 'GET')">Testen</button>
     </div>
     <div class="endpoint">
-        <span class="method post">POST</span> <code>/api/dokumente/smb/sync</code> - SMB Sync
+        <span class="method post">POST</span> <code>/api/dokumente/smb/sync</code> - SMB Synchronisation
     </div>
     
     <h2>🗄️ Datenbank:</h2>
     <div class="endpoint">
         <span class="method get">GET</span> <code>/api/database/stats</code> - DB Statistiken
+        <button class="test-btn" onclick="testEndpoint('/api/database/stats', 'GET')">Testen</button>
     </div>
     <div class="endpoint">
         <span class="method get">GET</span> <code>/api/database/tables/{table}</code> - Tabellendaten
     </div>
     
-    <p><em>Für vollständige API-Tests nutze das OpenAPI JSON Schema mit einem externen Tool wie Postman.</em></p>
+    <h2>🔧 Debug & System:</h2>
+    <div class="endpoint">
+        <span class="method get">GET</span> <code>/debug/routes</code> - Alle verfügbaren Routen
+        <button class="test-btn" onclick="testEndpoint('/debug/routes', 'GET')">Testen</button>
+    </div>
+    <div class="endpoint">
+        <span class="method get">GET</span> <code>/</code> - API-Infos
+        <button class="test-btn" onclick="testEndpoint('/', 'GET')">Testen</button>
+    </div>
+    
+    <div id="result" style="margin-top: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 5px; display: none;">
+        <h3>Test-Ergebnis:</h3>
+        <pre id="result-content"></pre>
+    </div>
+    
+    <script>
+        async function testEndpoint(url, method) {
+            const resultDiv = document.getElementById('result');
+            const resultContent = document.getElementById('result-content');
+            
+            try {
+                resultDiv.style.display = 'block';
+                resultContent.textContent = 'Lädt...';
+                
+                const response = await fetch(url, { method: method });
+                const data = await response.json();
+                
+                resultContent.textContent = JSON.stringify(data, null, 2);
+                resultDiv.style.backgroundColor = response.ok ? '#d4edda' : '#f8d7da';
+            } catch(error) {
+                resultContent.textContent = `Fehler: ${error.message}`;
+                resultDiv.style.backgroundColor = '#f8d7da';
+            }
+        }
+    </script>
+    
+    <p><em>💡 Für komplexe API-Tests: OpenAPI JSON in Postman/Insomnia importieren</em></p>
 </body>
 </html>
     """)
