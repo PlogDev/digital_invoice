@@ -485,12 +485,12 @@ class WindowsSMBService:
 
     def test_smb_write_permissions(self) -> Dict[str, any]:
         """
-        ENDLICH: Verwende das funktionierende Passwort OHNE Credentials-File
+        FINAL FIX: Domain-Logik korrigiert
         """
         if not self.connection_config:
             return {"success": False, "error": "Keine SMB-Verbindung konfiguriert"}
         
-        logger.info("🧪 SMB-Schreibrechte-Test mit funktionierendem Passwort...")
+        logger.info("🧪 SMB-Schreibrechte-Test mit korrigierter Domain-Logik...")
         
         config = self.connection_config
         test_results = {
@@ -508,39 +508,47 @@ class WindowsSMBService:
         try:
             import subprocess
 
-            # Server UNC und User-String
+            # Server UNC
             server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
-            user_string = f"{config["PLOGSTIES"]}/{config['username']}" if config["domain"] else config["username"]
             test_folder_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
             
+            # DOMAIN-LOGIK KORRIGIERT:
+            # Wenn Domain in Config leer/None ist, aber wir wissen dass PLOGSTIES funktioniert
+            if config.get("domain") and config["domain"].strip():
+                # Domain aus Config verwenden
+                user_string = f"{config['domain']}/{config['username']}"
+                logger.info(f"👤 Domain aus Config: {config['domain']}")
+            else:
+                # FALLBACK: Hardcode PLOGSTIES (da wir wissen dass es funktioniert)
+                user_string = f"PLOGSTIES/{config['username']}"
+                logger.info(f"👤 Domain hardcoded: PLOGSTIES (da Config leer)")
+            
             logger.info(f"📁 Server UNC: {server_unc}")
-            logger.info(f"👤 User: {user_string}")
+            logger.info(f"👤 User String: {user_string}")
             logger.info(f"📁 Test-Ordner: {test_folder_path}")
             
-            # 1. TEST-Ordner erstellen - MIT stdin für Passwort (SICHER!)
+            # 1. TEST-Ordner erstellen
             logger.info("📁 Step 1: Erstelle TEST-Ordner...")
             
             cmd_mkdir = [
                 "smbclient",
                 server_unc,
-                "-U", user_string,  # NUR User, Passwort über stdin
+                "-U", user_string,
                 "-c", f'mkdir "{test_folder_path}"',
                 "-t", "15"
             ]
             
             logger.info(f"🔧 mkdir Command: {' '.join(cmd_mkdir)}")
             
-            # Passwort über stdin (SICHER - nicht im Command sichtbar!)
             result_mkdir = subprocess.run(
                 cmd_mkdir, 
-                input=config["password"] + "\n",  # Passwort über stdin
+                input=config["password"] + "\n",
                 capture_output=True, 
                 text=True, 
                 timeout=20
             )
             
             logger.info(f"📊 mkdir result: returncode={result_mkdir.returncode}")
-            logger.info(f"📊 mkdir stdout: {result_mkdir.stdout}")
             logger.info(f"📊 mkdir stderr: {result_mkdir.stderr}")
             
             if result_mkdir.returncode == 0 or "directory exists" in result_mkdir.stderr.lower():
@@ -558,56 +566,41 @@ class WindowsSMBService:
                     "-t", "15"
                 ]
                 
-                logger.info(f"🔧 rmdir Command: {' '.join(cmd_rmdir)}")
-                
                 result_rmdir = subprocess.run(
                     cmd_rmdir,
-                    input=config["password"] + "\n",  # Passwort über stdin
+                    input=config["password"] + "\n",
                     capture_output=True, 
                     text=True, 
                     timeout=20
                 )
                 
                 logger.info(f"📊 rmdir result: returncode={result_rmdir.returncode}")
-                logger.info(f"📊 rmdir stderr: {result_rmdir.stderr}")
                 
                 if result_rmdir.returncode == 0:
                     test_results["operations"]["delete_folder"] = True
                     logger.info("✅ TEST-Ordner erfolgreich gelöscht")
-                else:
-                    logger.warning(f"⚠️ Ordner-Löschung fehlgeschlagen: {result_rmdir.stderr}")
             else:
                 logger.error(f"❌ Ordner-Erstellung fehlgeschlagen: {result_mkdir.stderr}")
             
             # 3. Ergebnis auswerten
-            can_create = test_results["operations"]["create_folder"]
-            can_delete = test_results["operations"]["delete_folder"]
-            
-            test_results["write_access"] = can_create
+            test_results["write_access"] = test_results["operations"]["create_folder"]
             test_results["success"] = True
             
-            if can_create and can_delete:
-                test_results["message"] = "✅ Vollständige Schreibberechtigung! Ordner können erstellt und gelöscht werden."
+            if test_results["operations"]["create_folder"] and test_results["operations"]["delete_folder"]:
+                test_results["message"] = "✅ Vollständige Schreibberechtigung!"
                 logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF")
-            elif can_create:
-                test_results["message"] = "⚠️ Teilweise Schreibberechtigung. Ordner können erstellt, aber nicht gelöscht werden."
+            elif test_results["operations"]["create_folder"]:
+                test_results["message"] = "⚠️ Teilweise Schreibberechtigung."
                 logger.info("✅ SMB-Schreibrechte-Test: TEILZUGRIFF")
             else:
-                test_results["message"] = "❌ Kein Schreibzugriff. Ordner können nicht erstellt werden."
+                test_results["message"] = "❌ Kein Schreibzugriff."
                 test_results["write_access"] = False
                 logger.warning("⚠️ SMB-Schreibrechte-Test: KEIN SCHREIBZUGRIFF")
                     
-        except subprocess.TimeoutExpired as timeout_error:
-            test_results["error"] = f"Timeout beim SMB-Zugriff: {str(timeout_error)}"
-            logger.error(f"❌ SMB Write-Test Timeout: {timeout_error}")
-        except FileNotFoundError:
-            test_results["error"] = "smbclient nicht installiert"
-            logger.error("❌ SMB Write-Test: smbclient nicht gefunden")
         except Exception as e:
             test_results["error"] = f"Test-Fehler: {str(e)}"
-            logger.error(f"❌ SMB Write-Test unerwarteter Fehler: {e}")
+            logger.error(f"❌ SMB Write-Test Fehler: {e}")
         
-        logger.info(f"📊 Final test_results: {test_results}")
         return test_results
 
     def _find_test_pdf_file(self, creds_file: str) -> Optional[Dict[str, str]]:
