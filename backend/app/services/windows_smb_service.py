@@ -485,12 +485,12 @@ class WindowsSMBService:
 
     def test_smb_write_permissions(self) -> Dict[str, any]:
         """
-        DEBUG-VERSION: Testet Schreibberechtigung mit detailliertem Logging
+        Testet Schreibberechtigung mit korrigierter UNC-Pfad Syntax
         """
         if not self.connection_config:
             return {"success": False, "error": "Keine SMB-Verbindung konfiguriert"}
         
-        logger.info("🧪 Starte SMB-Schreibrechte-Test mit Debug...")
+        logger.info("🧪 Starte SMB-Schreibrechte-Test mit korrigierter Syntax...")
         
         config = self.connection_config
         test_results = {
@@ -512,8 +512,9 @@ class WindowsSMBService:
             import subprocess
             import tempfile
             
-            logger.info("📋 Step 1: Erstelle Credentials-Datei...")
-            # 1. Credentials-Datei erstellen
+            logger.info("📋 Step 1: Erstelle Credentials-Datei (mit funktionierender Logik)...")
+            
+            # 1:1 COPY aus _scan_with_smbclient (funktioniert!)
             with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.creds') as f:
                 if config["domain"]:
                     f.write(f"username={config['domain']}\\{config['username']}\n")
@@ -521,20 +522,22 @@ class WindowsSMBService:
                     f.write(f"username={config['username']}\n")
                 f.write(f"password={config['password']}\n")
                 creds_file = f.name
-
-            logger.info(f"✅ Credentials-Datei erstellt: {creds_file} (mit derselben Logik wie funktionierende Methoden)")
-                        
+            
+            logger.info(f"✅ Credentials-Datei erstellt: {creds_file}")
+            
             try:
-                base_unc = f"//{config['server']}/{config['share']}/{config['remote_base_path'].replace(chr(92), '/')}"
-                test_folder_name = "TEST_WRITE_PERMISSIONS"
-                test_folder_unc = f"{base_unc}/{test_folder_name}"
+                # KORRIGIERT: Nur Share-Level UNC, nicht der volle Pfad!
+                server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
                 
-                logger.info(f"📁 Step 2: Basis-UNC: {base_unc}")
-                logger.info(f"📁 Step 2: Test-Ordner: {test_folder_unc}")
+                # Vollständiger Pfad für mkdir Command
+                full_remote_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
                 
-                # 2. TEST-Ordner anlegen (OHNE PDF-Abhängigkeit!)
+                logger.info(f"📁 Step 2: Server UNC: {server_unc}")
+                logger.info(f"📁 Step 2: Full mkdir path: {full_remote_path}")
+                
+                # 2. TEST-Ordner anlegen (mit korrekter UNC-Struktur!)
                 logger.info(f"📁 Step 3: Erstelle TEST-Ordner...")
-                cmd = ["smbclient", base_unc, "-A", creds_file, "-c", f"mkdir {test_folder_name}", "-t", "15"]
+                cmd = ["smbclient", server_unc, "-A", creds_file, "-c", f"mkdir {full_remote_path}", "-t", "15"]
                 logger.info(f"🔧 Command: {' '.join(cmd)}")
                 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
@@ -542,10 +545,6 @@ class WindowsSMBService:
                 logger.info(f"📊 mkdir stdout: {result.stdout}")
                 logger.info(f"📊 mkdir stderr: {result.stderr}")
                 
-                if result.returncode == 0 or "directory exists" in result.stderr.lower():
-                    test_results["operations"]["create_folder"] = True
-                    logger.info("✅ TEST-Ordner erstellt/existiert")
-                    
                 if result.returncode == 0 or "directory exists" in result.stderr.lower():
                     test_results["operations"]["create_folder"] = True
                     logger.info("✅ TEST-Ordner erstellt/existiert")
@@ -560,15 +559,18 @@ class WindowsSMBService:
                         
                         # 5. PDF in TEST-Ordner kopieren (Download + Upload)
                         logger.info("📋 Step 5: Kopiere PDF in TEST-Ordner...")
-                        source_unc = f"{base_unc}/{test_pdf_info['folder']}"
+                        source_folder_unc = f"{server_unc}/{config['remote_base_path'].replace(chr(92), '/')}/{test_pdf_info['folder']}"
+                        test_folder_unc = f"{server_unc}{full_remote_path}"
                         
                         # Temp-lokale Datei
                         temp_local_file = f"/tmp/test_smb_{test_pdf_info['filename']}"
+                        logger.info(f"📁 Source UNC: {source_folder_unc}")
+                        logger.info(f"📁 Test UNC: {test_folder_unc}")
                         logger.info(f"📁 Temp-Datei: {temp_local_file}")
                         
                         # Download von Quell-Ordner
                         logger.info("📥 Download Test-PDF...")
-                        cmd_download = ["smbclient", source_unc, "-A", creds_file, "-c", f"get '{test_pdf_info['filename']}' '{temp_local_file}'", "-t", "30"]
+                        cmd_download = ["smbclient", source_folder_unc, "-A", creds_file, "-c", f"get '{test_pdf_info['filename']}' '{temp_local_file}'", "-t", "30"]
                         logger.info(f"🔧 Download Command: {' '.join(cmd_download)}")
                         
                         result_download = subprocess.run(cmd_download, capture_output=True, text=True, timeout=35)
@@ -618,7 +620,7 @@ class WindowsSMBService:
                     
                     # 7. TEST-Ordner löschen
                     logger.info("🗑️ Step 6: Lösche TEST-Ordner...")
-                    cmd_rmdir = ["smbclient", base_unc, "-A", creds_file, "-c", f"rmdir {test_folder_name}", "-t", "15"]
+                    cmd_rmdir = ["smbclient", server_unc, "-A", creds_file, "-c", f"rmdir {full_remote_path}", "-t", "15"]
                     result_rmdir = subprocess.run(cmd_rmdir, capture_output=True, text=True, timeout=20)
                     logger.info(f"📊 rmdir result: returncode={result_rmdir.returncode}")
                     
