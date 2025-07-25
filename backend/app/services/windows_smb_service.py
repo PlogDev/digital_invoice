@@ -510,7 +510,7 @@ class WindowsSMBService:
 
             # Server UNC und User-String
             server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
-            user_string = f"{config['domain']}/{config['username']}" if config["domain"] else config["username"]
+            user_string = f"{config["PLOGSTIES"]}/{config['username']}" if config["domain"] else config["username"]
             test_folder_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
             
             logger.info(f"📁 Server UNC: {server_unc}")
