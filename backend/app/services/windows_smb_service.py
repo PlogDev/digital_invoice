@@ -485,12 +485,12 @@ class WindowsSMBService:
 
     def test_smb_write_permissions(self) -> Dict[str, any]:
         """
-        Testet Schreibberechtigung mit korrigierter UNC-Pfad Syntax
+        Testet Schreibberechtigung - DIREKT wie im Terminal
         """
         if not self.connection_config:
             return {"success": False, "error": "Keine SMB-Verbindung konfiguriert"}
         
-        logger.info("🧪 Starte SMB-Schreibrechte-Test mit korrigierter Syntax...")
+        logger.info("🧪 Starte SMB-Schreibrechte-Test mit DIREKTER Terminal-Syntax...")
         
         config = self.connection_config
         test_results = {
@@ -503,163 +503,86 @@ class WindowsSMBService:
                 "delete_file": False,
                 "delete_folder": False
             },
-            "test_file_used": "",
+            "test_file_used": "Terminal-Test",
             "message": "",
             "error": ""
         }
         
         try:
             import subprocess
-            import tempfile
+
+            # Server UNC und User-String - EXAKT wie im Terminal
+            server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
+            user_string = f"{config['domain']}/{config['username']}" if config["domain"] else config["username"]
+            test_folder_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
             
-            logger.info("📋 Step 1: Erstelle Credentials-Datei (mit funktionierender Logik)...")
+            logger.info(f"📁 Server UNC: {server_unc}")
+            logger.info(f"👤 User: {user_string}")
+            logger.info(f"📁 Test-Ordner: {test_folder_path}")
             
-            # 1:1 COPY aus _scan_with_smbclient (funktioniert!)
-            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.creds') as f:
-                if config["domain"]:
-                    f.write(f"username={config['domain']}\\{config['username']}\n")
+            # 1. TEST-Ordner erstellen - EXAKT wie dein Terminal-Befehl
+            logger.info("📁 Step 1: Erstelle TEST-Ordner (direkte Terminal-Syntax)...")
+            
+            cmd_mkdir = [
+                "smbclient",
+                server_unc,
+                "-U", f"{user_string}%{config['password']}",  # User%Password direkt
+                "-c", f"mkdir {test_folder_path}",
+                "-t", "15"
+            ]
+            
+            logger.info(f"🔧 mkdir Command: {' '.join(cmd_mkdir).replace(config['password'], '***')}")
+            
+            result_mkdir = subprocess.run(cmd_mkdir, capture_output=True, text=True, timeout=20)
+            logger.info(f"📊 mkdir result: returncode={result_mkdir.returncode}")
+            logger.info(f"📊 mkdir stdout: {result_mkdir.stdout}")
+            logger.info(f"📊 mkdir stderr: {result_mkdir.stderr}")
+            
+            if result_mkdir.returncode == 0 or "directory exists" in result_mkdir.stderr.lower():
+                test_results["operations"]["create_folder"] = True
+                logger.info("✅ TEST-Ordner erstellt/existiert")
+                
+                # 2. TEST-Ordner wieder löschen
+                logger.info("🗑️ Step 2: Lösche TEST-Ordner...")
+                
+                cmd_rmdir = [
+                    "smbclient",
+                    server_unc,
+                    "-U", f"{user_string}%{config['password']}",
+                    "-c", f"rmdir {test_folder_path}",
+                    "-t", "15"
+                ]
+                
+                logger.info(f"🔧 rmdir Command: {' '.join(cmd_rmdir).replace(config['password'], '***')}")
+                
+                result_rmdir = subprocess.run(cmd_rmdir, capture_output=True, text=True, timeout=20)
+                logger.info(f"📊 rmdir result: returncode={result_rmdir.returncode}")
+                logger.info(f"📊 rmdir stderr: {result_rmdir.stderr}")
+                
+                if result_rmdir.returncode == 0:
+                    test_results["operations"]["delete_folder"] = True
+                    logger.info("✅ TEST-Ordner erfolgreich gelöscht")
                 else:
-                    f.write(f"username={config['username']}\n")
-                f.write(f"password={config['password']}\n")
-                creds_file = f.name
+                    logger.warning(f"⚠️ Ordner-Löschung fehlgeschlagen: {result_rmdir.stderr}")
+            else:
+                logger.error(f"❌ Ordner-Erstellung fehlgeschlagen: {result_mkdir.stderr}")
             
-            logger.info(f"✅ Credentials-Datei erstellt: {creds_file}")
+            # 3. Ergebnis auswerten
+            basic_write_access = test_results["operations"]["create_folder"]
+            test_results["write_access"] = basic_write_access
+            test_results["success"] = True
             
-            try:
-                # KORRIGIERT: Nur Share-Level UNC, nicht der volle Pfad!
-                server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
-                
-                # Vollständiger Pfad für mkdir Command
-                full_remote_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
-                
-                logger.info(f"📁 Step 2: Server UNC: {server_unc}")
-                logger.info(f"📁 Step 2: Full mkdir path: {full_remote_path}")
-                
-                # 2. TEST-Ordner anlegen (mit korrekter UNC-Struktur!)
-                logger.info(f"📁 Step 3: Erstelle TEST-Ordner...")
-                cmd = ["smbclient", server_unc, "-A", creds_file, "-c", f"mkdir {full_remote_path}", "-t", "15"]
-                logger.info(f"🔧 Command: {' '.join(cmd)}")
-                
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-                logger.info(f"📊 mkdir result: returncode={result.returncode}")
-                logger.info(f"📊 mkdir stdout: {result.stdout}")
-                logger.info(f"📊 mkdir stderr: {result.stderr}")
-                
-                if result.returncode == 0 or "directory exists" in result.stderr.lower():
-                    test_results["operations"]["create_folder"] = True
-                    logger.info("✅ TEST-Ordner erstellt/existiert")
-                    
-                    # OPTIONAL: PDF-Test nur wenn PDFs vorhanden sind
-                    logger.info("🔍 Step 4: Suche Test-PDF (optional)...")
-                    test_pdf_info = self._find_test_pdf_file(creds_file)
-                    
-                    if test_pdf_info:
-                        test_results["test_file_used"] = f"{test_pdf_info['folder']}/{test_pdf_info['filename']}"
-                        logger.info(f"📄 Test-PDF gefunden: {test_results['test_file_used']}")
-                        
-                        # 5. PDF in TEST-Ordner kopieren (Download + Upload)
-                        logger.info("📋 Step 5: Kopiere PDF in TEST-Ordner...")
-                        source_folder_unc = f"{server_unc}/{config['remote_base_path'].replace(chr(92), '/')}/{test_pdf_info['folder']}"
-                        test_folder_unc = f"{server_unc}{full_remote_path}"
-                        
-                        # Temp-lokale Datei
-                        temp_local_file = f"/tmp/test_smb_{test_pdf_info['filename']}"
-                        logger.info(f"📁 Source UNC: {source_folder_unc}")
-                        logger.info(f"📁 Test UNC: {test_folder_unc}")
-                        logger.info(f"📁 Temp-Datei: {temp_local_file}")
-                        
-                        # Download von Quell-Ordner
-                        logger.info("📥 Download Test-PDF...")
-                        cmd_download = ["smbclient", source_folder_unc, "-A", creds_file, "-c", f"get '{test_pdf_info['filename']}' '{temp_local_file}'", "-t", "30"]
-                        logger.info(f"🔧 Download Command: {' '.join(cmd_download)}")
-                        
-                        result_download = subprocess.run(cmd_download, capture_output=True, text=True, timeout=35)
-                        logger.info(f"📊 download result: returncode={result_download.returncode}")
-                        logger.info(f"📊 download stderr: {result_download.stderr}")
-                        
-                        if result_download.returncode == 0 and os.path.exists(temp_local_file):
-                            logger.info(f"✅ PDF heruntergeladen: {os.path.getsize(temp_local_file)} bytes")
-                            
-                            # Upload in TEST-Ordner
-                            logger.info("📤 Upload Test-PDF in TEST-Ordner...")
-                            cmd_upload = ["smbclient", test_folder_unc, "-A", creds_file, "-c", f"put '{temp_local_file}' '{test_pdf_info['filename']}'", "-t", "30"]
-                            logger.info(f"🔧 Upload Command: {' '.join(cmd_upload)}")
-                            
-                            result_upload = subprocess.run(cmd_upload, capture_output=True, text=True, timeout=35)
-                            logger.info(f"📊 upload result: returncode={result_upload.returncode}")
-                            logger.info(f"📊 upload stderr: {result_upload.stderr}")
-                            
-                            if result_upload.returncode == 0:
-                                test_results["operations"]["copy_file"] = True
-                                logger.info("✅ PDF erfolgreich in TEST-Ordner kopiert")
-                                
-                                # 6. Kopierte Datei wieder löschen
-                                logger.info("🗑️ Lösche Test-PDF aus TEST-Ordner...")
-                                cmd_delete = ["smbclient", test_folder_unc, "-A", creds_file, "-c", f"del '{test_pdf_info['filename']}'", "-t", "15"]
-                                result_delete = subprocess.run(cmd_delete, capture_output=True, text=True, timeout=20)
-                                logger.info(f"📊 delete result: returncode={result_delete.returncode}")
-                                
-                                if result_delete.returncode == 0:
-                                    test_results["operations"]["delete_file"] = True
-                                    logger.info("✅ Test-PDF erfolgreich gelöscht")
-                            else:
-                                logger.error(f"❌ Upload fehlgeschlagen: {result_upload.stderr}")
-                        else:
-                            logger.error(f"❌ Download fehlgeschlagen: {result_download.stderr}")
-                        
-                        # Temp-Datei aufräumen
-                        try:
-                            if os.path.exists(temp_local_file):
-                                os.unlink(temp_local_file)
-                                logger.info("🧹 Temp-Datei aufgeräumt")
-                        except Exception as cleanup_error:
-                            logger.warning(f"⚠️ Temp-Datei cleanup Fehler: {cleanup_error}")
-                    else:
-                        logger.info("ℹ️ Keine Test-PDF gefunden - teste nur Ordner-Operationen")
-                        test_results["test_file_used"] = "Nur Ordner-Test (keine PDF gefunden)"
-                    
-                    # 7. TEST-Ordner löschen
-                    logger.info("🗑️ Step 6: Lösche TEST-Ordner...")
-                    cmd_rmdir = ["smbclient", server_unc, "-A", creds_file, "-c", f"rmdir {full_remote_path}", "-t", "15"]
-                    result_rmdir = subprocess.run(cmd_rmdir, capture_output=True, text=True, timeout=20)
-                    logger.info(f"📊 rmdir result: returncode={result_rmdir.returncode}")
-                    
-                    if result_rmdir.returncode == 0:
-                        test_results["operations"]["delete_folder"] = True
-                        logger.info("✅ TEST-Ordner erfolgreich gelöscht")
+            if basic_write_access:
+                if test_results["operations"]["delete_folder"]:
+                    test_results["message"] = "✅ Vollständige Ordner-Berechtigung! Ordner können erstellt und gelöscht werden."
+                    logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF (Ordner-Operationen)")
                 else:
-                    logger.error(f"❌ Ordner-Erstellung fehlgeschlagen: {result.stderr}")
-                
-                # 8. Ergebnis auswerten - MINIMUM: Ordner erstellen/löschen
-                basic_operations = ["create_folder", "delete_folder"]
-                pdf_operations = ["copy_file", "delete_file"]
-                
-                # Basis-Schreibzugriff = Ordner erstellen + löschen
-                basic_write_access = all(test_results["operations"][op] for op in basic_operations)
-                
-                # Vollzugriff = Basis + PDF-Operationen  
-                full_write_access = basic_write_access and all(test_results["operations"][op] for op in pdf_operations)
-                
-                test_results["write_access"] = basic_write_access  # Mindestens Ordner-Operationen
-                test_results["success"] = True
-                
-                if full_write_access:
-                    test_results["message"] = "✅ Vollständige Schreibberechtigung! PDFs können direkt auf dem Server verwaltet werden."
-                    logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF (inkl. PDF-Operationen)")
-                elif basic_write_access:
-                    test_results["message"] = "⚠️ Basis-Schreibzugriff! Ordner können erstellt werden, PDF-Test nicht durchgeführt."
-                    logger.info("✅ SMB-Schreibrechte-Test: BASIS-SCHREIBZUGRIFF")
-                else:
-                    failed_ops = [op for op in basic_operations if not test_results["operations"][op]]
-                    test_results["message"] = f"❌ Kein Schreibzugriff. Fehlgeschlagen: {', '.join(failed_ops)}"
-                    logger.warning(f"⚠️ SMB-Schreibrechte-Test: KEIN SCHREIBZUGRIFF - {failed_ops}")
-                        
-            finally:
-                try:
-                    os.unlink(creds_file)
-                    logger.info("🧹 Credentials-Datei aufgeräumt")
-                except Exception as cleanup_error:
-                    logger.warning(f"⚠️ Credentials cleanup Fehler: {cleanup_error}")
+                    test_results["message"] = "⚠️ Ordner können erstellt, aber nicht gelöscht werden."
+                    logger.info("✅ SMB-Schreibrechte-Test: TEILZUGRIFF (nur erstellen)")
+            else:
+                test_results["message"] = "❌ Kein Schreibzugriff. Ordner können nicht erstellt werden."
+                test_results["write_access"] = False
+                logger.warning("⚠️ SMB-Schreibrechte-Test: KEIN SCHREIBZUGRIFF")
                     
         except subprocess.TimeoutExpired as timeout_error:
             test_results["error"] = f"Timeout beim SMB-Zugriff: {str(timeout_error)}"
@@ -670,9 +593,6 @@ class WindowsSMBService:
         except Exception as e:
             test_results["error"] = f"Test-Fehler: {str(e)}"
             logger.error(f"❌ SMB Write-Test unerwarteter Fehler: {e}")
-            logger.error(f"❌ Exception Type: {type(e)}")
-            import traceback
-            logger.error(f"❌ Traceback: {traceback.format_exc()}")
         
         logger.info(f"📊 Final test_results: {test_results}")
         return test_results
