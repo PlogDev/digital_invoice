@@ -116,7 +116,7 @@ from fastapi.responses import HTMLResponse
 
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """Korrigierte Swagger UI."""
+    """Korrigierte Swagger UI ohne Layout-Fehler."""
     return HTMLResponse(content="""
 <!DOCTYPE html>
 <html>
@@ -134,24 +134,21 @@ async def custom_swagger_ui_html():
     <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
     <script>
         try {
-            SwaggerUIBundle({
+            const ui = SwaggerUIBundle({
                 url: '/openapi.json',
                 dom_id: '#swagger-ui',
                 deepLinking: true,
                 presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIBundle.presets.standalone
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: "StandaloneLayout"
+                    SwaggerUIBundle.presets.apis
+                ]
             });
+            console.log('Swagger UI erfolgreich geladen');
         } catch(error) {
+            console.error('Swagger UI Fehler:', error);
             document.getElementById('swagger-ui').innerHTML = `
                 <div style="padding: 2rem; text-align: center; font-family: Arial;">
                     <h1>⚠️ Swagger UI Fehler</h1>
-                    <p>JavaScript-Fehler: ${error.message}</p>
+                    <p>Layout-Fehler behoben. Falls weiterhin Probleme:</p>
                     <p><a href="/docs-simple">Zur einfachen API-Übersicht</a></p>
                     <p><a href="/openapi.json">OpenAPI JSON herunterladen</a></p>
                 </div>
