@@ -20,6 +20,7 @@ services:
     restart: unless-stopped
 
   backend:
+    privileged: true 
     build:
       context: ./backend
       dockerfile: Dockerfile.portainer
