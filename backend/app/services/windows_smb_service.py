@@ -485,12 +485,12 @@ class WindowsSMBService:
 
     def test_smb_write_permissions(self) -> Dict[str, any]:
         """
-        Testet Schreibberechtigung - DIREKT wie im Terminal
+        ENDLICH: Verwende das funktionierende Passwort OHNE Credentials-File
         """
         if not self.connection_config:
             return {"success": False, "error": "Keine SMB-Verbindung konfiguriert"}
         
-        logger.info("🧪 Starte SMB-Schreibrechte-Test mit DIREKTER Terminal-Syntax...")
+        logger.info("🧪 SMB-Schreibrechte-Test mit funktionierendem Passwort...")
         
         config = self.connection_config
         test_results = {
@@ -498,12 +498,9 @@ class WindowsSMBService:
             "write_access": False,
             "operations": {
                 "create_folder": False,
-                "copy_file": False,
-                "move_file": False,
-                "delete_file": False,
                 "delete_folder": False
             },
-            "test_file_used": "Terminal-Test",
+            "test_file_used": "Ordner-Test",
             "message": "",
             "error": ""
         }
@@ -511,7 +508,7 @@ class WindowsSMBService:
         try:
             import subprocess
 
-            # Server UNC und User-String - EXAKT wie im Terminal
+            # Server UNC und User-String
             server_unc = f"//{config['server']}/{config['share']}"  # //192.168.66.7/Daten
             user_string = f"{config['domain']}/{config['username']}" if config["domain"] else config["username"]
             test_folder_path = f"/{config['remote_base_path'].replace(chr(92), '/')}/TEST_WRITE_PERMISSIONS"
@@ -520,20 +517,28 @@ class WindowsSMBService:
             logger.info(f"👤 User: {user_string}")
             logger.info(f"📁 Test-Ordner: {test_folder_path}")
             
-            # 1. TEST-Ordner erstellen - EXAKT wie dein Terminal-Befehl
-            logger.info("📁 Step 1: Erstelle TEST-Ordner (direkte Terminal-Syntax)...")
+            # 1. TEST-Ordner erstellen - MIT stdin für Passwort (SICHER!)
+            logger.info("📁 Step 1: Erstelle TEST-Ordner...")
             
             cmd_mkdir = [
                 "smbclient",
                 server_unc,
-                "-U", f"{user_string}%{config['password']}",  # User%Password direkt
-                "-c", f"mkdir {test_folder_path}",
+                "-U", user_string,  # NUR User, Passwort über stdin
+                "-c", f'mkdir "{test_folder_path}"',
                 "-t", "15"
             ]
             
-            logger.info(f"🔧 mkdir Command: {' '.join(cmd_mkdir).replace(config['password'], '***')}")
+            logger.info(f"🔧 mkdir Command: {' '.join(cmd_mkdir)}")
             
-            result_mkdir = subprocess.run(cmd_mkdir, capture_output=True, text=True, timeout=20)
+            # Passwort über stdin (SICHER - nicht im Command sichtbar!)
+            result_mkdir = subprocess.run(
+                cmd_mkdir, 
+                input=config["password"] + "\n",  # Passwort über stdin
+                capture_output=True, 
+                text=True, 
+                timeout=20
+            )
+            
             logger.info(f"📊 mkdir result: returncode={result_mkdir.returncode}")
             logger.info(f"📊 mkdir stdout: {result_mkdir.stdout}")
             logger.info(f"📊 mkdir stderr: {result_mkdir.stderr}")
@@ -548,14 +553,21 @@ class WindowsSMBService:
                 cmd_rmdir = [
                     "smbclient",
                     server_unc,
-                    "-U", f"{user_string}%{config['password']}",
-                    "-c", f"rmdir {test_folder_path}",
+                    "-U", user_string,
+                    "-c", f'rmdir "{test_folder_path}"',
                     "-t", "15"
                 ]
                 
-                logger.info(f"🔧 rmdir Command: {' '.join(cmd_rmdir).replace(config['password'], '***')}")
+                logger.info(f"🔧 rmdir Command: {' '.join(cmd_rmdir)}")
                 
-                result_rmdir = subprocess.run(cmd_rmdir, capture_output=True, text=True, timeout=20)
+                result_rmdir = subprocess.run(
+                    cmd_rmdir,
+                    input=config["password"] + "\n",  # Passwort über stdin
+                    capture_output=True, 
+                    text=True, 
+                    timeout=20
+                )
+                
                 logger.info(f"📊 rmdir result: returncode={result_rmdir.returncode}")
                 logger.info(f"📊 rmdir stderr: {result_rmdir.stderr}")
                 
@@ -568,17 +580,18 @@ class WindowsSMBService:
                 logger.error(f"❌ Ordner-Erstellung fehlgeschlagen: {result_mkdir.stderr}")
             
             # 3. Ergebnis auswerten
-            basic_write_access = test_results["operations"]["create_folder"]
-            test_results["write_access"] = basic_write_access
+            can_create = test_results["operations"]["create_folder"]
+            can_delete = test_results["operations"]["delete_folder"]
+            
+            test_results["write_access"] = can_create
             test_results["success"] = True
             
-            if basic_write_access:
-                if test_results["operations"]["delete_folder"]:
-                    test_results["message"] = "✅ Vollständige Ordner-Berechtigung! Ordner können erstellt und gelöscht werden."
-                    logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF (Ordner-Operationen)")
-                else:
-                    test_results["message"] = "⚠️ Ordner können erstellt, aber nicht gelöscht werden."
-                    logger.info("✅ SMB-Schreibrechte-Test: TEILZUGRIFF (nur erstellen)")
+            if can_create and can_delete:
+                test_results["message"] = "✅ Vollständige Schreibberechtigung! Ordner können erstellt und gelöscht werden."
+                logger.info("🎉 SMB-Schreibrechte-Test: VOLLZUGRIFF")
+            elif can_create:
+                test_results["message"] = "⚠️ Teilweise Schreibberechtigung. Ordner können erstellt, aber nicht gelöscht werden."
+                logger.info("✅ SMB-Schreibrechte-Test: TEILZUGRIFF")
             else:
                 test_results["message"] = "❌ Kein Schreibzugriff. Ordner können nicht erstellt werden."
                 test_results["write_access"] = False
